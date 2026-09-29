@@ -1,0 +1,53 @@
+{
+  "name": "منظومة العهد لإدارة الاستوديوهات والإنتاج",
+  "short_name": "منظومة العهد",
+  "description": "نظام ذكي وشامل لإدارة الحجوزات، العملاء، العقود، ومصوري الميدان مع دعم الذكاء الاصطناعي",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0b0f19",
+  "theme_color": "#4338ca",
+  "scope": "/",
+  "lang": "ar",
+  "dir": "rtl",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "لوحة التحكم",
+      "short_name": "الرئيسية",
+      "url": "/",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "سجل الحجوزات",
+      "short_name": "الحجوزات",
+      "url": "/?tab=bookings",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "بوابة المصورين",
+      "short_name": "المصورين",
+      "url": "/?tab=photographer",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "بوابة العميل",
+      "short_name": "العملاء",
+      "url": "/?tab=client-portal",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any" }]
+    }
+  ]
+}
