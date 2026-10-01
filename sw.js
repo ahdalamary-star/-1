@@ -1,9 +1,9 @@
-const CACHE_NAME = 'star-media-pwa-cache-v7';
+const CACHE_NAME = 'lensflow-cache-v20261001-2';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/favicon.svg',
-  '/icons.svg'
+  './',
+  './index.html',
+  './favicon.svg',
+  './icons.svg'
 ];
 
 // Install Event
@@ -19,18 +19,16 @@ self.addEventListener('install', event => {
 // Activate Event (Cache Invalidation)
 self.addEventListener('activate', event => {
   event.waitUntil(
-    self.clients.claim().then(() => {
-      return caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cache => {
-            if (cache !== CACHE_NAME) {
-              console.log('Service Worker: Clearing Old Cache', cache);
-              return caches.delete(cache);
-            }
-          })
-        );
-      });
-    })
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cache => {
+          if (cache !== CACHE_NAME) {
+            console.log('Service Worker: Clearing Old Cache', cache);
+            return caches.delete(cache);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
   );
 });
 
