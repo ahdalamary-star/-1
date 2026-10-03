@@ -122,17 +122,42 @@
       });
     </script>
     <script>
-      // Service Worker Registration
+      // Clear legacy Service Worker caches on load
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          keys.forEach(function(key) {
+            if (key !== 'lensflow-cache-v20261003-utf8-v4') {
+              console.log('Purging old cache:', key);
+              caches.delete(key);
+            }
+          });
+        });
+      }
+
+      // Service Worker Registration with Auto-Update and Cache Busting
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').then(registration => {
+          navigator.serviceWorker.register('./sw.js?v=20261003v4').then(registration => {
             console.log('SW registered: ', registration);
+            registration.update();
+            registration.addEventListener('updatefound', () => {
+              const newWorker = registration.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('New version detected, reloading...');
+                    window.location.reload();
+                  }
+                });
+              }
+            });
           }).catch(registrationError => {
             console.log('SW registration failed: ', registrationError);
           });
         });
       }
-
+    </script>
+    <script>
       // Dynamic Manifest for Custom PWA Icon
       try {
         const customIcon = localStorage.getItem('custom_app_icon');
