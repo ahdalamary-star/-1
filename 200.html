@@ -121,9 +121,69 @@
         }, 100);
       });
     </script>
-    <script type="module" crossorigin src="./assets/index-ioWaIXn6.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/vendor-icons-B4K7f6L0.js">
-    <link rel="modulepreload" crossorigin href="./assets/vendor-charts-DL3sgVVs.js">
+    <script>
+      // Service Worker Registration
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').then(registration => {
+            console.log('SW registered: ', registration);
+          }).catch(registrationError => {
+            console.log('SW registration failed: ', registrationError);
+          });
+        });
+      }
+
+      // Dynamic Manifest for Custom PWA Icon
+      try {
+        const customIcon = localStorage.getItem('custom_app_icon');
+        const defaultManifest = {
+          "name": "نظام الحجز | حجز تصوير المناسبات",
+          "short_name": "نظام الحجز",
+          "description": "إدارة حجوزات التصوير والمناسبات",
+          "start_url": "/",
+          "display": "standalone",
+          "orientation": "portrait-primary",
+          "background_color": "#0b0f19",
+          "theme_color": "#4338ca",
+          "scope": "/",
+          "lang": "ar",
+          "dir": "rtl",
+          "categories": ["business", "productivity", "utilities"],
+          "icons": [
+            {
+              "src": customIcon || "/favicon.svg",
+              "sizes": "192x192 512x512 any",
+              "type": customIcon ? "image/png" : "image/svg+xml",
+              "purpose": "any maskable"
+            }
+          ]
+        };
+
+        const stringManifest = JSON.stringify(defaultManifest);
+        const blob = new Blob([stringManifest], {type: 'application/json'});
+        const manifestURL = URL.createObjectURL(blob);
+        
+        const manifestLink = document.querySelector('link[rel="manifest"]');
+        if (manifestLink) {
+          manifestLink.setAttribute('href', manifestURL);
+        }
+
+        if (customIcon) {
+          const iconLinks = document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]');
+          iconLinks.forEach(link => {
+            link.setAttribute('href', customIcon);
+            if (link.getAttribute('rel') === 'icon') {
+              link.setAttribute('type', 'image/png');
+            }
+          });
+        }
+      } catch(e) {
+        console.error("Error setting dynamic manifest:", e);
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/index-B1panyFa.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-icons-O4rfYiIp.js">
+    <link rel="modulepreload" crossorigin href="./assets/vendor-charts-2Gra0Ufk.js">
     <link rel="modulepreload" crossorigin href="./assets/vendor-confetti-oQXWb4Lk.js">
     <link rel="stylesheet" crossorigin href="./assets/index-0Ebq7w4_.css">
   </head>
