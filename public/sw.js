@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lensflow-cache-v20261003-utf8-v4';
+const CACHE_NAME = 'lensflow-cache-v20261004-v1';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
