@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lensflow-cache-v20261001-2';
+const CACHE_NAME = 'lensflow-cache-v20261003-utf8-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -16,14 +16,14 @@ self.addEventListener('install', event => {
   );
 });
 
-// Activate Event (Cache Invalidation)
+// Activate Event (Cache Invalidation - Forcefully wipe ALL old caches)
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
         cacheNames.map(cache => {
           if (cache !== CACHE_NAME) {
-            console.log('Service Worker: Clearing Old Cache', cache);
+            console.log('Service Worker: Purging Old Cache', cache);
             return caches.delete(cache);
           }
         })
@@ -45,82 +45,55 @@ self.addEventListener('fetch', event => {
     url.startsWith('ws:') ||
     url.startsWith('wss:')
   ) {
-    // Network-only, bypass Service Worker cache entirely
     return;
   }
 
-  // Use Network-First strategy for navigation requests (main page loading)
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then(networkResponse => {
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
-        .catch(() => {
-          return caches.match('/index.html');
-        })
-    );
-    return;
-  }
-
-  // Cache-First for static assets to ensure offline support
+  // Network-First strategy for ALL navigation and static assets to ensure zero stale builds
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).then(networkResponse => {
-        // Cache static assets (JS/CSS built bundles, images) from our own domain
-        if (
-          networkResponse &&
-          networkResponse.status === 200 &&
-          (url.includes('/assets/') || url.endsWith('.js') || url.endsWith('.css') || url.endsWith('.png') || url.endsWith('.svg') || url.includes('fonts.googleapis.com'))
-        ) {
+    fetch(event.request)
+      .then(networkResponse => {
+        if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then(cache => {
             cache.put(event.request, responseToCache);
           });
         }
         return networkResponse;
-      });
-    })
+      })
+      .catch(() => {
+        // Fallback to cache ONLY if completely offline
+        return caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          if (event.request.mode === 'navigate') {
+            return caches.match('./index.html') || caches.match('/index.html');
+          }
+          return null;
+        });
+      })
   );
 });
 
 // Push Notification Event Listener
 self.addEventListener('push', event => {
-  console.log('Service Worker: Received push event', event);
-
   let data = {};
   if (event.data) {
     try {
       data = event.data.json();
-      console.log('Push data JSON parsed:', data);
     } catch (e) {
-      data = { body: event.data.text() };
-      console.log('Push data text parsed:', data);
+      data = { title: 'منظومة العهد', body: event.data.text() };
     }
   }
 
-  const title = data.notification?.title || data.data?.title || 'إشعار جديد من منظومة العهد';
-  const body = data.notification?.body || data.data?.body || data.body || '';
-  const icon = data.notification?.icon || data.data?.icon || '/favicon.svg';
-  const badge = data.notification?.badge || data.data?.badge || '/favicon.svg';
-  
-  // Custom click action link
-  const clickAction = data.notification?.click_action || data.data?.click_action || '/';
-
+  const title = data.title || 'منظومة العهد | تنبيه جديد';
   const options = {
-    body: body,
-    icon: icon,
-    badge: badge,
+    body: data.body || 'لديك إشعار جديد في منظومة العهد.',
+    icon: './favicon.svg',
+    badge: './favicon.svg',
+    dir: 'rtl',
+    lang: 'ar',
     vibrate: [100, 50, 100],
     data: {
-      url: clickAction,
-      ...data.data
+      url: data.url || './'
     }
   };
 
@@ -131,28 +104,19 @@ self.addEventListener('push', event => {
 
 // Notification Click Event Listener
 self.addEventListener('notificationclick', event => {
-  console.log('Service Worker: Notification clicked', event);
   event.notification.close();
-
-  let targetUrl = '/';
-  if (event.notification.data && event.notification.data.url) {
-    targetUrl = event.notification.data.url;
-  }
+  const targetUrl = event.notification.data?.url || './';
 
   event.waitUntil(
-    self.registration.getNotifications().then(notifications => {
-      return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-        // Find an open tab and navigate/focus it, or open new window
-        for (const client of clientList) {
-          if ('focus' in client && 'navigate' in client) {
-            client.navigate(targetUrl);
-            return client.focus();
-          }
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+      for (let client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
         }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
-        }
-      });
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
     })
   );
 });
