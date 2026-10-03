@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import * as Icons from 'lucide-react';
-import { formatBookingNumber, parseTime12hTo24h, parse24hToParts, generateAttendanceTimeOptions } from '../../utils/helpers';
+import { formatBookingNumber } from '../../utils/helpers';
 import { AttendanceTimePicker } from '../Common/AttendanceTimePicker';
-import { ContactField, DeviceContactPicker } from '../Contacts/DeviceContactPicker';
 
 export const BookingFormModal = () => {
   const {
@@ -14,73 +13,34 @@ export const BookingFormModal = () => {
     setEditingBooking,
     addBooking,
     updateBooking,
-    clients,
-    freelancers,
-    companies,
-    contacts,
-    allContacts,
-    addContact,
+    clients = [],
+    freelancers = [],
+    companies = [],
+    team = [],
     setSelectedBooking,
-    setIsBookingDetailOpen,
-    setActiveTab
+    setIsBookingDetailOpen
   } = useApp();
 
   const isEditMode = Boolean(editingBooking);
 
   // 1. فريلانسر (الافتراضي)، 2. عميل، 3. شركة
-  const [bookingType, setBookingType] = useState('freelancer'); // 'freelancer' | 'client' | 'company' | 'partnership'
+  const [bookingType, setBookingType] = useState('freelancer'); // 'freelancer' | 'client' | 'company'
 
-  // Dedicated Device Contacts states for Client and Photographer (Screens 1-12)
+  // بيانات العميل والمصور المباشرة
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
-  const [selectedClient, setSelectedClient] = useState(null);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
 
   const [photographerName, setPhotographerName] = useState('');
   const [photographerPhone, setPhotographerPhone] = useState('');
-  const [selectedPhotographer, setSelectedPhotographer] = useState(null);
+  const [showPhotographerSuggestions, setShowPhotographerSuggestions] = useState(false);
 
-  const [contactPickerState, setContactPickerState] = useState({
-    isOpen: false,
-    roleType: 'client',
-    action: 'pick'
-  });
-
-  const handleRequestPicker = (roleType, action = 'pick') => {
-    setContactPickerState({
-      isOpen: true,
-      roleType,
-      action
-    });
-  };
-
-  const handleContactSelected = (name, phone, contact) => {
-    if (contactPickerState.roleType === 'freelancer') {
-      setPhotographerName(name);
-      setPhotographerPhone(phone);
-      setSelectedPhotographer(contact);
-    } else {
-      setClientName(name);
-      setClientPhone(phone);
-      setSelectedClient(contact);
-    }
-  };
-
-  const handleClearClient = () => {
-    setClientName('');
-    setClientPhone('');
-    setSelectedClient(null);
-  };
-
-  const handleClearPhotographer = () => {
-    setPhotographerName('');
-    setPhotographerPhone('');
-    setSelectedPhotographer(null);
-  };
+  const clientDropdownRef = useRef(null);
+  const photographerDropdownRef = useRef(null);
 
   const [bookingDate, setBookingDate] = useState('');
   const [category, setCategory] = useState('زفاف');
   const [customCategory, setCustomCategory] = useState('');
-  const [startTime, setStartTime] = useState('16:00');
   const [coveragePeriod, setCoveragePeriod] = useState('صباحًا');
   const [isAllDay, setIsAllDay] = useState(false);
   const [attendanceTime, setAttendanceTime] = useState('');
@@ -91,25 +51,39 @@ export const BookingFormModal = () => {
   
   const [savedBooking, setSavedBooking] = useState(null);
 
-  // States for Financials
-  const [totalPrice, setTotalPrice] = useState(''); // Client price / Company price / Partnership price
-  const [invoiceNumber, setInvoiceNumber] = useState(''); // Client / Company invoice
-  const [invoiceStatus, setInvoiceStatus] = useState('غير مسدد'); // Company invoice status
-  const [partnershipPercentage, setPartnershipPercentage] = useState(''); // Partnership percentage
+  // البيانات المالية
+  const [totalPrice, setTotalPrice] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [invoiceStatus, setInvoiceStatus] = useState('غير مسدد');
+  const [partnershipPercentage, setPartnershipPercentage] = useState('');
 
-  // States for Freelancer
+  // بيانات الفريلانسر
   const [freelancerMode, setFreelancerMode] = useState('scattered'); // 'scattered' | 'consecutive'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [dailyRate, setDailyRate] = useState('');
   const [workingDaysCount, setWorkingDaysCount] = useState(1);
-  const [scatteredDates, setScatteredDates] = useState(['']); // array of scattered dates
+  const [scatteredDates, setScatteredDates] = useState(['']);
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // إغلاق قوائم الاقتراحات عند الضغط خارجها
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(e.target)) {
+        setShowClientSuggestions(false);
+      }
+      if (photographerDropdownRef.current && !photographerDropdownRef.current.contains(e.target)) {
+        setShowPhotographerSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const categories = [
@@ -133,59 +107,40 @@ export const BookingFormModal = () => {
     'أخرى'
   ];
 
-  // Initialize form defaults when opened or when editingBooking changes
+  // تصفية اقتراحات العملاء
+  const filteredClients = (clients || []).filter(c => {
+    const q = clientName.toLowerCase().trim();
+    if (!q) return true;
+    return (c.name && c.name.toLowerCase().includes(q)) || (c.phone && c.phone.includes(q));
+  }).slice(0, 6);
+
+  // تصفية اقتراحات المصورين من الفريلانسرز وفريق العمل
+  const availablePhotographers = [
+    ...(freelancers || []),
+    ...(team || []).map(t => ({ id: t.id, name: t.name, phone: t.phone || '', role: t.role || 'مصور' }))
+  ];
+  const filteredPhotographers = availablePhotographers.filter((p, idx, self) => {
+    const q = photographerName.toLowerCase().trim();
+    const match = !q || (p.name && p.name.toLowerCase().includes(q)) || (p.phone && p.phone.includes(q));
+    const firstIdx = self.findIndex(s => s.name === p.name);
+    return match && firstIdx === idx;
+  }).slice(0, 6);
+
+  // تعبئة البيانات عند فتح النموذج أو التعديل
   useEffect(() => {
     if (isBookingFormOpen) {
-      // 1. Check if returning from Contacts with an in-progress draft
-      if (window.bookingDraft) {
-        const d = window.bookingDraft;
-        setBookingType(d.bookingType || 'freelancer');
-        setCategory(d.category || 'زفاف');
-        setCustomCategory(d.customCategory || '');
-        setBookingDate(d.bookingDate || '');
-        setCoveragePeriod(d.coveragePeriod || 'صباحًا');
-        setIsAllDay(Boolean(d.isAllDay));
-        setAttendanceTime(d.attendanceTime || '');
-        setLocation(d.location || '');
-        setLocationUrl(d.locationUrl || '');
-        setStatus(d.status || 'مؤكد');
-        setNotes(d.notes || '');
-        setTotalPrice(d.totalPrice || '');
-        setInvoiceNumber(d.invoiceNumber || '');
-        setInvoiceStatus(d.invoiceStatus || 'غير مسدد');
-        setPartnershipPercentage(d.partnershipPercentage || '');
-        setFreelancerMode(d.freelancerMode || 'scattered');
-        setStartDate(d.startDate || '');
-        setEndDate(d.endDate || '');
-        setDailyRate(d.dailyRate || '');
-        setWorkingDaysCount(d.workingDaysCount || 1);
-        setScatteredDates(d.scatteredDates || ['']);
-        setClientName(d.clientName || '');
-        setClientPhone(d.clientPhone || '');
-        setPhotographerName(d.photographerName || '');
-        setPhotographerPhone(d.photographerPhone || '');
-        if (d.editingBooking) {
-          setEditingBooking(d.editingBooking);
-        }
-
-        window.bookingDraft = null;
-        window.returnToBooking = null;
-        return;
-      }
-
       if (editingBooking) {
-        // Edit mode prefill
         const b = editingBooking;
         const bType = b.bookingType || (b.freelancerName ? 'freelancer' : (b.clientName ? 'client' : 'company'));
         setBookingType(bType);
         
         const cName = b.clientName || (bType === 'client' ? (b.title?.split(' - ')[1] || b.title || '') : '');
-        const cPhone = b.clientPhone || (bType === 'client' ? (b.contactPhone || b.phone || '') : '');
+        const cPhone = b.clientPhone || b.contactPhone || b.phone || '';
         setClientName(cName);
         setClientPhone(cPhone);
 
         const pName = b.freelancerName || b.assignedPhotographer || (bType === 'freelancer' ? (b.title?.split(' - ')[1] || b.title || '') : '');
-        const pPhone = b.freelancerPhone || (bType === 'freelancer' ? (b.contactPhone || b.phone || '') : '');
+        const pPhone = b.freelancerPhone || '';
         setPhotographerName(pName);
         setPhotographerPhone(pPhone);
         
@@ -195,15 +150,6 @@ export const BookingFormModal = () => {
         const cat = b.category || b.coverageType || 'زفاف';
         if (categories.includes(cat)) {
           setCategory(cat);
-          setCustomCategory('');
-        } else if (cat === 'تصوير مناسبة') {
-          setCategory('تصوير مناسبات');
-          setCustomCategory('');
-        } else if (cat === 'عقار') {
-          setCategory('تصوير عقارات');
-          setCustomCategory('');
-        } else if (cat === 'منتجات') {
-          setCategory('تصوير منتجات');
           setCustomCategory('');
         } else {
           setCategory('أخرى');
@@ -233,7 +179,6 @@ export const BookingFormModal = () => {
         
         setSavedBooking(null);
       } else {
-        // Add new booking mode (Default: Freelancer tab)
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -253,21 +198,16 @@ export const BookingFormModal = () => {
         setNotes('');
         setSavedBooking(null);
 
-        // Reset Contacts
         setClientName('');
         setClientPhone('');
-        setSelectedClient(null);
         setPhotographerName('');
         setPhotographerPhone('');
-        setSelectedPhotographer(null);
 
-        // Financials reset
         setTotalPrice('');
         setInvoiceNumber('');
         setInvoiceStatus('غير مسدد');
         setPartnershipPercentage('');
 
-        // Freelancer reset
         setBookingType('freelancer');
         setFreelancerMode('scattered');
         setStartDate(selectedDateForBooking || todayStr);
@@ -275,29 +215,11 @@ export const BookingFormModal = () => {
         setDailyRate('');
         setWorkingDaysCount(1);
         setScatteredDates([selectedDateForBooking || todayStr]);
-
-        // Support Cooperation Log prefilled redirect
-        if (window.prefilledEntity) {
-          const ent = window.prefilledEntity;
-          if (ent.type === 'freelancer') {
-            setPhotographerName(ent.name || '');
-            setPhotographerPhone(ent.phone || '');
-            setSelectedPhotographer(ent);
-          } else {
-            setClientName(ent.name || '');
-            setClientPhone(ent.phone || '');
-            setSelectedClient(ent);
-          }
-          if (ent.type && ['freelancer', 'client', 'company'].includes(ent.type)) {
-            setBookingType(ent.type);
-          }
-          window.prefilledEntity = null; // consume it
-        }
       }
     }
   }, [isBookingFormOpen, selectedDateForBooking, editingBooking]);
 
-  // Auto calculate consecutive days
+  // حساب أيام العمل المتتالية
   useEffect(() => {
     if (bookingType === 'freelancer' && freelancerMode === 'consecutive') {
       if (startDate && endDate) {
@@ -312,7 +234,7 @@ export const BookingFormModal = () => {
     }
   }, [startDate, endDate, bookingType, freelancerMode]);
 
-  // Auto calculate scattered days
+  // حساب أيام العمل المتفرقة
   useEffect(() => {
     if (bookingType === 'freelancer' && freelancerMode === 'scattered') {
       const validDates = scatteredDates.filter(d => d);
@@ -325,7 +247,7 @@ export const BookingFormModal = () => {
   const handleSave = () => {
     const name = clientName.trim() || photographerName.trim();
     if (!name) {
-      alert('يرجى اختيار العميل أو المصور لإتمام الحجز');
+      alert('يرجى كتابة اسم العميل أو اسم المصور لإتمام الحجز');
       return;
     }
 
@@ -333,10 +255,8 @@ export const BookingFormModal = () => {
       ? customCategory.trim()
       : category;
 
-    // Auto title generation
     const bookingTitle = `${finalCategory} - ${name}`;
 
-    // Construct primary record
     const bookingData = {
       ...(editingBooking || {}),
       bookingType,
@@ -359,59 +279,24 @@ export const BookingFormModal = () => {
       equipmentIds: editingBooking ? (editingBooking.equipmentIds || []) : []
     };
 
-    // Populate entity metadata with both Client & Photographer
     bookingData.clientName = clientName.trim();
     bookingData.clientPhone = clientPhone.trim();
-    bookingData.clientId = selectedClient?.id || null;
 
     bookingData.freelancerName = photographerName.trim();
     bookingData.freelancerPhone = photographerPhone.trim();
-    bookingData.freelancerId = selectedPhotographer?.id || null;
-    bookingData.assignedPhotographer = bookingData.freelancerName;
+    bookingData.assignedPhotographer = photographerName.trim();
 
     bookingData.contactPhone = clientPhone || photographerPhone || '';
     bookingData.phone = clientPhone || photographerPhone || '';
     bookingData.contactName = name;
 
-    // Ensure new contact is added to the unified contacts directory as single source of truth
-    if (clientPhone && clientName && addContact) {
-      const existing = (allContacts || []).find(c => 
-        (c.phone && c.phone.replace(/[^\d+]/g, '') === clientPhone.replace(/[^\d+]/g, '')) ||
-        (c.name && c.name.trim().toLowerCase() === clientName.trim().toLowerCase())
-      );
-      if (!existing) {
-        addContact({
-          name: clientName,
-          phone: clientPhone,
-          role: bookingType === 'company' ? 'شركة شريكة' : 'عميل',
-          type: bookingType === 'company' ? 'company' : 'client'
-        });
-      }
-    }
-
-    if (photographerPhone && photographerName && addContact) {
-      const existing = (allContacts || []).find(c => 
-        (c.phone && c.phone.replace(/[^\d+]/g, '') === photographerPhone.replace(/[^\d+]/g, '')) ||
-        (c.name && c.name.trim().toLowerCase() === photographerName.trim().toLowerCase())
-      );
-      if (!existing) {
-        addContact({
-          name: photographerName,
-          phone: photographerPhone,
-          role: 'مصور / فريلانسر',
-          type: 'freelancer'
-        });
-      }
-    }
-
-    // Populate Financial fields depending on bookingType
+    // البيانات المالية
     if (bookingType === 'client') {
       bookingData.date = bookingDate;
       bookingData.startDate = bookingDate;
       bookingData.endDate = bookingDate;
       bookingData.totalPrice = totalPrice !== '' ? Number(totalPrice) : null;
       bookingData.invoiceNumber = invoiceNumber || '';
-      
     } else if (bookingType === 'company') {
       bookingData.date = bookingDate;
       bookingData.startDate = bookingDate;
@@ -419,20 +304,11 @@ export const BookingFormModal = () => {
       bookingData.totalPrice = totalPrice !== '' ? Number(totalPrice) : null;
       bookingData.invoiceNumber = invoiceNumber || '';
       bookingData.paymentStatus = invoiceStatus || 'غير مسدد';
-      
-    } else if (bookingType === 'partnership') {
-      bookingData.date = bookingDate;
-      bookingData.startDate = bookingDate;
-      bookingData.endDate = bookingDate;
-      bookingData.totalPrice = totalPrice !== '' ? Number(totalPrice) : null;
-      bookingData.partnershipPercentage = partnershipPercentage !== '' ? Number(partnershipPercentage) : null;
-      
     } else if (bookingType === 'freelancer') {
       bookingData.dailyRate = dailyRate !== '' ? Number(dailyRate) : null;
       bookingData.workingDaysCount = workingDaysCount;
       bookingData.freelancerMode = freelancerMode;
 
-      // Handle consecutive vs scattered dates
       const dates = [];
       if (freelancerMode === 'consecutive') {
         if (startDate && endDate) {
@@ -446,7 +322,6 @@ export const BookingFormModal = () => {
           dates.push(bookingDate);
         }
       } else {
-        // Scattered dates
         scatteredDates.filter(d => d).forEach(d => dates.push(d));
         if (dates.length === 0) dates.push(bookingDate);
       }
@@ -479,7 +354,7 @@ export const BookingFormModal = () => {
 
   const calculatedTotalDue = (Number(dailyRate) || 0) * workingDaysCount;
 
-  // Render Success view screen
+  // شاشة نجاح الحفظ
   if (savedBooking) {
     return (
       <div className="modal-overlay" style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.75)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', direction: 'rtl' }}>
@@ -538,7 +413,6 @@ export const BookingFormModal = () => {
     switch (bookingType) {
       case 'freelancer': return 'var(--status-success)';
       case 'company': return 'var(--status-warning)';
-      case 'partnership': return 'var(--status-info)';
       default: return 'var(--primary-color)';
     }
   };
@@ -651,29 +525,137 @@ export const BookingFormModal = () => {
             </div>
           </div>
 
-          {/* 2. الحقل 1: العميل (مع أيقونة 👤 وزر «+ إضافة إلى جهات الاتصال» مرة واحدة فقط) */}
-          <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
-            <ContactField
-              label={bookingType === 'company' ? 'اسم الشركة / العميل:' : 'العميل:'}
-              roleType="client"
+          {/* 2. الحقل 1: العميل */}
+          <div ref={clientDropdownRef} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px', position: 'relative' }}>
+            <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)' }}>
+              {bookingType === 'company' ? 'اسم الشركة / العميل *' : 'اسم العميل *'}
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder={bookingType === 'company' ? 'اختر أو اكتب اسم الشركة...' : 'اختر أو اكتب اسم العميل...'}
               value={clientName}
-              phone={clientPhone}
-              placeholder="اختر العميل"
-              onClear={handleClearClient}
-              onRequestPicker={(role, action) => handleRequestPicker(role, action)}
+              onChange={e => {
+                setClientName(e.target.value);
+                setShowClientSuggestions(true);
+              }}
+              onFocus={() => setShowClientSuggestions(true)}
+              style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
+            />
+            {showClientSuggestions && filteredClients.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '72px',
+                right: 0,
+                left: 0,
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '10px',
+                boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
+                zIndex: 100,
+                maxHeight: '180px',
+                overflowY: 'auto'
+              }}>
+                {filteredClients.map(c => (
+                  <div
+                    key={c.id}
+                    onClick={() => {
+                      setClientName(c.name);
+                      if (c.phone) setClientPhone(c.phone);
+                      setShowClientSuggestions(false);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--border-color)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '0.82rem'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-main)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <span style={{ fontWeight: 800 }}>{c.name}</span>
+                    {c.phone && <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', direction: 'ltr' }}>{c.phone}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              className="form-control en-digits"
+              placeholder="رقم جوال العميل (اختياري)"
+              value={clientPhone}
+              onChange={e => setClientPhone(e.target.value)}
+              style={{ height: '36px', borderRadius: '8px', fontSize: '0.82rem', textAlign: 'left', direction: 'ltr', marginTop: '2px' }}
             />
           </div>
 
-          {/* 3. الحقل 2: المصور (مع أيقونة 👤 وزر «+ إضافة إلى جهات الاتصال» مرة واحدة فقط) */}
-          <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
-            <ContactField
-              label="المصور:"
-              roleType="freelancer"
+          {/* 3. الحقل 2: المصور */}
+          <div ref={photographerDropdownRef} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px', position: 'relative' }}>
+            <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)' }}>
+              المصور / الفريلانسر:
+            </label>
+            <input
+              type="text"
+              className="form-control"
+              placeholder="اختر أو اكتب اسم المصور..."
               value={photographerName}
-              phone={photographerPhone}
-              placeholder="اختر المصور"
-              onClear={handleClearPhotographer}
-              onRequestPicker={(role, action) => handleRequestPicker(role, action)}
+              onChange={e => {
+                setPhotographerName(e.target.value);
+                setShowPhotographerSuggestions(true);
+              }}
+              onFocus={() => setShowPhotographerSuggestions(true)}
+              style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
+            />
+            {showPhotographerSuggestions && filteredPhotographers.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '72px',
+                right: 0,
+                left: 0,
+                backgroundColor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '10px',
+                boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
+                zIndex: 100,
+                maxHeight: '180px',
+                overflowY: 'auto'
+              }}>
+                {filteredPhotographers.map((p, idx) => (
+                  <div
+                    key={p.id || idx}
+                    onClick={() => {
+                      setPhotographerName(p.name);
+                      if (p.phone) setPhotographerPhone(p.phone);
+                      setShowPhotographerSuggestions(false);
+                    }}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      borderBottom: '1px solid var(--border-color)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: '0.82rem'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = 'var(--bg-main)'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+                  >
+                    <span style={{ fontWeight: 800 }}>{p.name}</span>
+                    {p.phone && <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', direction: 'ltr' }}>{p.phone}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <input
+              type="text"
+              className="form-control en-digits"
+              placeholder="رقم جوال المصور (اختياري)"
+              value={photographerPhone}
+              onChange={e => setPhotographerPhone(e.target.value)}
+              style={{ height: '36px', borderRadius: '8px', fontSize: '0.82rem', textAlign: 'left', direction: 'ltr', marginTop: '2px' }}
             />
           </div>
 
@@ -836,7 +818,6 @@ export const BookingFormModal = () => {
           {bookingType === 'freelancer' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px dashed var(--border-color)', paddingTop: '14px' }}>
               
-              {/* اختيار نوع الجدولة: أيام متفرقة أو متتالية */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>نوع جدولة العمل للفريلانسر:</label>
                 <div style={{ display: 'flex', backgroundColor: 'var(--bg-main)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
@@ -879,7 +860,7 @@ export const BookingFormModal = () => {
                 </div>
               </div>
 
-              {/* إدخال سعر اليوم */}
+              {/* سعر اليوم */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>
                   سعر اليوم:
@@ -994,7 +975,7 @@ export const BookingFormModal = () => {
                 </div>
               )}
 
-              {/* بطاقة ملخص المستحقات */}
+              {/* ملخص المستحقات */}
               <div style={{ padding: '12px 14px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>إجمالي عدد الأيام:</span>
@@ -1165,7 +1146,7 @@ export const BookingFormModal = () => {
 
         </div>
 
-        {/* 12. Footer Save Button fixed at the bottom */}
+        {/* 12. Footer Save Button */}
         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', backgroundColor: 'var(--bg-card)', width: '100%' }}>
           <button
             type="button"
@@ -1193,14 +1174,6 @@ export const BookingFormModal = () => {
           </button>
         </div>
 
-        {/* Device Contact Picker Modal System (Screens 2, 3, 5, 6, 7, 8) */}
-        <DeviceContactPicker
-          isOpen={contactPickerState.isOpen}
-          targetRole={contactPickerState.roleType}
-          initialAction={contactPickerState.action}
-          onClose={() => setContactPickerState(prev => ({ ...prev, isOpen: false }))}
-          onSelectContact={handleContactSelected}
-        />
       </div>
     </div>
   );

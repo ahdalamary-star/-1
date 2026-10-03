@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import * as Icons from 'lucide-react';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
-import { DeviceContactPicker } from '../Contacts/DeviceContactPicker';
 
 export const TeamView = () => {
   const { team, addTeamMember, updateTeamMember, deleteTeamMember, toggleSupervisorRole, userRole, bookings } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isContactPickerOpen, setIsContactPickerOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -303,28 +301,7 @@ export const TeamView = () => {
             <form onSubmit={handleAddSubmit}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <label className="form-label" style={{ margin: 0 }}>اسم الموظف الثلاثي *</label>
-                    <button
-                      type="button"
-                      onClick={() => setIsContactPickerOpen(true)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--primary-color)',
-                        fontSize: '0.74rem',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        padding: 0
-                      }}
-                    >
-                      <Icons.User size={13} />
-                      <span>من جهات الاتصال</span>
-                    </button>
-                  </div>
+                  <label className="form-label" style={{ margin: 0 }}>اسم الموظف الثلاثي *</label>
                   <input
                     type="text"
                     className="form-control"
@@ -518,19 +495,6 @@ export const TeamView = () => {
       )}
       {/* Member Confirm Delete Modal */}
       {renderMemberDeleteModal && renderMemberDeleteModal()}
-          {/* Device Contact Picker */}
-      <DeviceContactPicker
-        isOpen={isContactPickerOpen}
-        targetRole="freelancer"
-        onClose={() => setIsContactPickerOpen(false)}
-        onSelectContact={(name, phone) => {
-          setMemberForm(prev => ({
-            ...prev,
-            name,
-            phone: phone || prev.phone
-          }));
-        }}
-      />
     </div>
   );
 };

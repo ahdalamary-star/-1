@@ -3,7 +3,6 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatBookingNumber } from '../../utils/helpers';
 import * as Icons from 'lucide-react';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
-import { DeviceContactPicker } from '../Contacts/DeviceContactPicker';
 
 export const ClientsView = () => {
   const {
@@ -37,7 +36,6 @@ export const ClientsView = () => {
   const isAdmin = userRole === 'admin';
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
-  const [isContactPickerOpen, setIsContactPickerOpen] = useState(false);
   const [newClient, setNewClient] = useState({
     name: '',
     type: 'فرد',
@@ -1514,28 +1512,7 @@ export const ClientsView = () => {
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ fontSize: '0.76rem', fontWeight: 800, margin: 0 }}>اسم العميل / الجهة *</label>
-                  <button
-                    type="button"
-                    onClick={() => setIsContactPickerOpen(true)}
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--primary-color)',
-                      fontSize: '0.74rem',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      padding: 0
-                    }}
-                  >
-                    <Icons.User size={13} />
-                    <span>من جهات الاتصال</span>
-                  </button>
-                </div>
+                <label style={{ fontSize: '0.76rem', fontWeight: 800, margin: 0 }}>اسم العميل / الجهة *</label>
                 <input type="text" className="form-control" required value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} style={{ height: '34px', fontSize: '0.8rem' }} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1558,21 +1535,6 @@ export const ClientsView = () => {
           </div>
         </div>
       )}
-
-      {/* Device Contact Picker */}
-      <DeviceContactPicker
-        isOpen={isContactPickerOpen}
-        targetRole="client"
-        onClose={() => setIsContactPickerOpen(false)}
-        onSelectContact={(name, phone) => {
-          setNewClient(prev => ({
-            ...prev,
-            name,
-            phone: phone || prev.phone
-          }));
-        }}
-      />
-
     </div>
   );
 

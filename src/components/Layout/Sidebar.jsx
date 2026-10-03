@@ -66,7 +66,6 @@ export const Sidebar = ({ isMobileOpen, setIsMobileOpen }) => {
       title: 'الفريق والموارد',
       items: [
         { id: 'team', label: 'فريق العمل' },
-        { id: 'contacts', label: 'جهات الاتصال' },
         { id: 'projects', label: 'المشاريع' },
         { id: 'equipment', label: 'معداتي' },
         { id: 'clients', label: 'العملاء' },
