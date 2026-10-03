@@ -34,7 +34,6 @@ export const Sidebar = ({ isMobileOpen, setIsMobileOpen }) => {
       case 'tasks': return <Icons.CheckSquare size={18} />;
       case 'projects': return <Icons.FolderKanban size={18} />;
       case 'clients': return <Icons.Users size={18} />;
-      case 'contacts': return <Icons.Contact size={18} />;
       case 'companies': return <Icons.Building size={18} />;
       case 'team': return <Icons.UserCheck size={18} />;
       case 'achievements': return <Icons.Award size={18} />;

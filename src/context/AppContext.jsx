@@ -142,7 +142,7 @@ export const AppProvider = ({ children }) => {
   const [clients, setClients] = useState(() => getStoredState('star_media_clients', initialClients));
   const [companies, setCompanies] = useState(() => getStoredState('star_media_companies', initialCompanies));
   const [freelancers, setFreelancers] = useState(() => getStoredState('star_media_freelancers', []));
-  const [contacts, setContacts] = useState(() => getStoredState('star_media_contacts', []));
+  const [contacts, setContacts] = useState([]);
   const [equipment, setEquipment] = useState(() => getStoredState('star_media_equipment', initialEquipment));
   const [bookings, setBookings] = useState(() => getStoredState('star_media_bookings', []));
   const [projects, setProjects] = useState(() => getStoredState('star_media_projects', []));
@@ -208,7 +208,7 @@ export const AppProvider = ({ children }) => {
   const OPERATIONAL_COLLECTIONS = new Set([
     'bookings', 'projects', 'tasks', 'invoices', 'payments', 'expenses',
     'contracts', 'files', 'quotations',
-    'waitlist', 'clients', 'companies', 'freelancers', 'contacts'
+    'waitlist', 'clients', 'companies', 'freelancers'
   ]);
 
   // Real-time Firestore synchronization (NO seeding for operational collections)
@@ -222,7 +222,6 @@ export const AppProvider = ({ children }) => {
       'star_media_contracts',
       'star_media_files', 'star_media_quotations', 'star_media_waitlist',
       'star_media_clients', 'star_media_companies', 'star_media_freelancers',
-      'star_media_contacts',
       'star_media_monthly_statements'
     ];
     operationalKeys.forEach(key => localStorage.removeItem(key));
@@ -232,7 +231,6 @@ export const AppProvider = ({ children }) => {
       { name: 'clients', stateSetter: setClients, initialData: [] },
       { name: 'companies', stateSetter: setCompanies, initialData: [] },
       { name: 'freelancers', stateSetter: setFreelancers, initialData: [] },
-      { name: 'contacts', stateSetter: setContacts, initialData: [] },
       { name: 'equipment', stateSetter: setEquipment, initialData: initialEquipment },
       { name: 'bookings', stateSetter: setBookings, initialData: [] },
       { name: 'projects', stateSetter: setProjects, initialData: [] },
@@ -1172,159 +1170,11 @@ export const AppProvider = ({ children }) => {
     showCelebration('تم حذف الشركة بنجاح! 🗑️');
   }, [addAuditLog, logFirestoreOp]);
 
-  // Contacts CRUD
-  const addContact = useCallback((contactData) => {
-    const sanitizedData = sanitizeObjectToEnglishDigits(contactData);
-    const newContact = {
-      id: contactData.id || Date.now(),
-      name: (sanitizedData.name || '').trim(),
-      phone: (sanitizedData.phone || '').trim(),
-      role: sanitizedData.role || sanitizedData.type || 'جهة اتصال عامة',
-      type: sanitizedData.type || 'contact',
-      email: (sanitizedData.email || '').trim(),
-      notes: (sanitizedData.notes || '').trim(),
-      createdAt: new Date().toISOString()
-    };
-
-    setContacts(prev => [newContact, ...(prev || [])]);
-
-    logFirestoreOp('setDoc', 'contacts', String(newContact.id), () =>
-      setDoc(doc(db, 'contacts', String(newContact.id)), newContact)
-    ).catch(err => console.warn('addContact error:', err));
-
-    addAuditLog('إضافة جهة اتصال', `تم إضافة جهة اتصال جديدة: ${newContact.name}`, '👤');
-    showCelebration('تم حفظ جهة الاتصال بنجاح! 👤');
-    return newContact;
-  }, [addAuditLog, logFirestoreOp]);
-
-  const updateContact = useCallback((contactId, updatedFields) => {
-    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
-    setContacts(prev => prev.map(c => (c.id === Number(contactId) || String(c.id) === String(contactId)) ? { ...c, ...sanitizedFields } : c));
-
-    logFirestoreOp('setDoc', 'contacts', String(contactId), () =>
-      setDoc(doc(db, 'contacts', String(contactId)), sanitizedFields, { merge: true })
-    ).catch(err => console.warn('updateContact error:', err));
-
-    addAuditLog('تحديث جهة اتصال', `تم تحديث بيانات جهة الاتصال #${contactId}`, '✏️');
-    showCelebration('تم تحديث جهة الاتصال بنجاح! ✏️');
-  }, [addAuditLog, logFirestoreOp]);
-
-  const deleteContact = useCallback((contactId) => {
-    setContacts(prev => prev.filter(c => c.id !== Number(contactId) && String(c.id) !== String(contactId)));
-
-    logFirestoreOp('deleteDoc', 'contacts', String(contactId), () =>
-      deleteDoc(doc(db, 'contacts', String(contactId)))
-    ).catch(err => console.warn('deleteContact error:', err));
-
-    addAuditLog('حذف جهة اتصال', `تم حذف جهة الاتصال #${contactId}`, '🗑️');
-    showCelebration('تم حذف جهة الاتصال بنجاح! 🗑️');
-  }, [addAuditLog, logFirestoreOp]);
-
-  // Unified Directory: combines direct contacts + freelancers + clients + companies + team
-  const allContacts = React.useMemo(() => {
-    const list = [];
-    const seen = new Set();
-
-    // 1. Direct contacts (highest priority)
-    (contacts || []).forEach(c => {
-      if (!c) return;
-      const cleanPhone = (c.phone || '').trim().replace(/[^0-9]/g, '');
-      const cleanName = (c.name || '').trim().toLowerCase();
-      const key = cleanPhone || cleanName;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        list.push({
-          ...c,
-          role: c.role || c.type || 'جهة اتصال',
-          type: c.type || 'contact',
-          source: 'contacts'
-        });
-      }
-    });
-
-    // 2. Freelancers
-    (freelancers || []).forEach(f => {
-      if (!f) return;
-      const cleanPhone = (f.phone || '').trim().replace(/[^0-9]/g, '');
-      const cleanName = (f.name || '').trim().toLowerCase();
-      const key = cleanPhone || cleanName;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        list.push({
-          id: f.id,
-          name: f.name,
-          phone: f.phone || '',
-          role: 'مصور / فريلانسر',
-          type: 'freelancer',
-          email: f.email || '',
-          source: 'freelancers'
-        });
-      }
-    });
-
-    // 3. Clients
-    (clients || []).forEach(cl => {
-      if (!cl) return;
-      const cleanPhone = (cl.phone || '').trim().replace(/[^0-9]/g, '');
-      const cleanName = (cl.name || '').trim().toLowerCase();
-      const key = cleanPhone || cleanName;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        list.push({
-          id: cl.id,
-          name: cl.name,
-          phone: cl.phone || '',
-          role: 'عميل',
-          type: 'client',
-          email: cl.email || '',
-          source: 'clients'
-        });
-      }
-    });
-
-    // 4. Companies
-    (companies || []).forEach(co => {
-      if (!co) return;
-      const phone = co.phone || co.contactPhone || '';
-      const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
-      const cleanName = (co.name || '').trim().toLowerCase();
-      const key = cleanPhone || cleanName;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        list.push({
-          id: co.id,
-          name: co.name,
-          phone,
-          role: 'شركة',
-          type: 'company',
-          email: co.email || '',
-          source: 'companies'
-        });
-      }
-    });
-
-    // 5. Team
-    (team || []).forEach(t => {
-      if (!t) return;
-      const cleanPhone = (t.phone || '').trim().replace(/[^0-9]/g, '');
-      const cleanName = (t.name || '').trim().toLowerCase();
-      const key = cleanPhone || cleanName;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        list.push({
-          id: t.id,
-          name: t.name,
-          phone: t.phone || '',
-          role: t.role || 'عضو فريق',
-          type: 'team',
-          email: t.email || '',
-          source: 'team'
-        });
-      }
-    });
-
-    return list;
-  }, [contacts, freelancers, clients, companies, team]);
+  // Contacts stubs
+  const addContact = useCallback(() => {}, []);
+  const updateContact = useCallback(() => {}, []);
+  const deleteContact = useCallback(() => {}, []);
+  const allContacts = useMemo(() => [], []);
 
   // Projects CRUD
   const addProject = useCallback((projectData) => {
