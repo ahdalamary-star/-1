@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19" />
+      <stop offset="40%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+
+    <!-- Glowing Circle Gradient -->
+    <radialGradient id="glow1" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.45" />
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glow2" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Card Gradient -->
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.9" />
+    </linearGradient>
+
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <style>
+    .title { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; font-size: 52px; font-weight: 800; fill: #ffffff; text-anchor: middle; }
+    .subtitle { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; font-size: 22px; font-weight: 500; fill: #cbd5e1; text-anchor: middle; }
+    .brand { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 700; fill: url(#accentGrad); letter-spacing: 2px; text-anchor: middle; }
+    .badge-text { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 600; fill: #f8fafc; text-anchor: middle; }
+    .footer-text { font-family: 'Cairo', 'Segoe UI', system-ui, sans-serif; font-size: 16px; font-weight: 500; fill: #94a3b8; text-anchor: middle; }
+  </style>
+
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)" />
+
+  <!-- Ambient Glows -->
+  <circle cx="1050" cy="100" r="350" fill="url(#glow1)" />
+  <circle cx="150" cy="500" r="300" fill="url(#glow2)" />
+
+  <!-- Grid overlay -->
+  <g stroke="#ffffff" stroke-opacity="0.04" stroke-width="1">
+    <line x1="0" y1="100" x2="1200" y2="100" />
+    <line x1="0" y1="200" x2="1200" y2="200" />
+    <line x1="0" y1="300" x2="1200" y2="300" />
+    <line x1="0" y1="400" x2="1200" y2="400" />
+    <line x1="0" y1="500" x2="1200" y2="500" />
+    <line x1="200" y1="0" x2="200" y2="630" />
+    <line x1="400" y1="0" x2="400" y2="630" />
+    <line x1="600" y1="0" x2="600" y2="630" />
+    <line x1="800" y1="0" x2="800" y2="630" />
+    <line x1="1000" y1="0" x2="1000" y2="630" />
+  </g>
+
+  <!-- Main Central Container -->
+  <rect x="90" y="55" width="1020" height="520" rx="28" fill="url(#cardBg)" stroke="#6366f1" stroke-width="1.5" stroke-opacity="0.35" filter="url(#dropShadow)" />
+
+  <!-- Brand Eyebrow -->
+  <text x="600" y="140" class="brand">AL-AHAD PRODUCTION &amp; MEDIA PLATFORM</text>
+
+  <!-- Main Headline -->
+  <text x="600" y="225" class="title">منظومة العهد للإنتاج والتصوير</text>
+
+  <!-- Subtitle -->
+  <text x="600" y="285" class="subtitle">المنصة الشاملة لإدارة الاستوديوهات، الحجوزات، طواقم العمل، وبوابة العملاء</text>
+
+  <!-- Feature Pills -->
+  <g id="features">
+    <!-- Feature 1 -->
+    <rect x="140" y="360" width="170" height="54" rx="14" fill="#312e81" fill-opacity="0.6" stroke="#818cf8" stroke-width="1" stroke-opacity="0.4" />
+    <text x="225" y="394" class="badge-text">إدارة الحجوزات</text>
+
+    <!-- Feature 2 -->
+    <rect x="330" y="360" width="170" height="54" rx="14" fill="#312e81" fill-opacity="0.6" stroke="#818cf8" stroke-width="1" stroke-opacity="0.4" />
+    <text x="415" y="394" class="badge-text">بوابة المصورين</text>
+
+    <!-- Feature 3 -->
+    <rect x="520" y="360" width="160" height="54" rx="14" fill="#312e81" fill-opacity="0.6" stroke="#818cf8" stroke-width="1" stroke-opacity="0.4" />
+    <text x="600" y="394" class="badge-text">بوابة العميل</text>
+
+    <!-- Feature 4 -->
+    <rect x="700" y="360" width="170" height="54" rx="14" fill="#312e81" fill-opacity="0.6" stroke="#818cf8" stroke-width="1" stroke-opacity="0.4" />
+    <text x="785" y="394" class="badge-text">الماليات والعقود</text>
+
+    <!-- Feature 5 -->
+    <rect x="890" y="360" width="170" height="54" rx="14" fill="#4c1d95" fill-opacity="0.8" stroke="#c084fc" stroke-width="1.2" />
+    <text x="975" y="394" class="badge-text">LensFlow AI ✦</text>
+  </g>
+
+  <!-- Bottom Divider -->
+  <line x1="160" y1="465" x2="1040" y2="465" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1" />
+
+  <!-- Footer Info -->
+  <text x="600" y="515" class="footer-text">تطبيق ويب تقدمي (PWA) متوافق مع كافة المنصات، الهواتف الذكية، وشبكات التواصل الاجتماعي</text>
+</svg>

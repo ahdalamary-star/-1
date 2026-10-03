@@ -1,0 +1,1954 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  initialTeam,
+  initialClients,
+  initialCompanies,
+  initialEquipment,
+  initialProjects,
+  initialTasks,
+  initialInvoices,
+  initialPayments,
+  initialExpenses,
+  initialAuditLogs,
+  initialNotifications,
+  defaultSettings,
+  initialContracts,
+  initialFiles,
+  initialCustomRoles,
+  initialBookings
+} from '../data/mockData';
+import { triggerCelebration, toEnglishDigits, sanitizeObjectToEnglishDigits, parseTime12hTo24h, getDeviceInfo, getDeviceId } from '../utils/helpers';
+import { db, auth } from '../firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { registerDeviceToken, unregisterDeviceToken, triggerNotificationEvent } from '../utils/fcm';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  writeBatch 
+} from 'firebase/firestore';
+
+const AppContext = createContext();
+
+export const AppProvider = ({ children }) => {
+  // Navigation & User Role State
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeOverlay, setActiveOverlay] = useState('NONE');
+  const [celebrationToast, setCelebrationToast] = useState(null);
+
+  // Current logged in user
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('star_media_current_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const deriveUserRole = (user) => {
+    if (!user || !user.id) return null;
+    const email = (user.email || '').toLowerCase().trim();
+    const role = (user.role || '').toLowerCase();
+    
+    if (user.id === 1 || user.isSupervisor || email === 'ahdalamary@gamil.com' || email === 'ahdalamary@gmail.com' || email === 'ahed@lensflow.sa' || email === 'admin@lensflow.sa' || role.includes('مدير') || role.includes('مشرف')) {
+      return 'admin';
+    }
+    return 'employee';
+  };
+
+  const [userRole, setUserRole] = useState(() => deriveUserRole(currentUser));
+
+  useEffect(() => {
+    setUserRole(deriveUserRole(currentUser));
+  }, [currentUser]);
+
+  // ─── FIRESTORE OP DEBUG TRACER ───────────────────────────────────────────────
+  const logFirestoreOp = useCallback(async (opName, collectionName, docId, actionFn) => {
+    const projectId = db?.app?.options?.projectId || 'al-ahad-app-2026';
+    const activeUid = auth?.currentUser?.uid || 'no-auth-uid';
+    const role = userRole || 'no-role';
+
+    console.log(`[FIRESTORE OP BEFORE] Op: ${opName} | Collection: ${collectionName} | DocID: ${docId} | UID: ${activeUid} | Role: ${role} | ProjectID: ${projectId}`);
+    try {
+      const res = await actionFn();
+      console.log(`[FIRESTORE OP SUCCESS] Op: ${opName} | Collection: ${collectionName} | DocID: ${docId} | UID: ${activeUid} | Role: ${role} | ProjectID: ${projectId}`);
+      return res;
+    } catch (err) {
+      console.error(`[FIRESTORE OP ERROR] Op: ${opName} | Collection: ${collectionName} | DocID: ${docId} | UID: ${activeUid} | Role: ${role} | ProjectID: ${projectId} | Code: ${err?.code} | Message: ${err?.message}`, err);
+      throw err;
+    }
+  }, [userRole]);
+
+  const loginUser = useCallback((userRecord) => {
+    if (!userRecord) return;
+    setCurrentUser(userRecord);
+    setUserRole(deriveUserRole(userRecord));
+    localStorage.setItem('star_media_current_user', JSON.stringify(userRecord));
+    registerDeviceToken(userRecord).catch(err => console.warn('Error registering device token on login:', err));
+  }, []);
+
+  const logoutUser = useCallback(() => {
+    if (currentUser) {
+      unregisterDeviceToken(currentUser).catch(err => console.warn('Error unregistering device token on logout:', err));
+    }
+    setCurrentUser(null);
+    setUserRole(null);
+    localStorage.removeItem('star_media_current_user');
+    auth.signOut().catch(err => console.error("Firebase SignOut error:", err));
+  }, [currentUser]);
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // ====================================================================
+  // مسح فوري للكاش التشغيلي القديم من localStorage
+  // يحدث هذا فوراً عند تحميل الكود قبل أي قراءة للبيانات
+  // ====================================================================
+  const OPERATIONAL_LS_KEYS = [
+    'star_media_bookings', 'star_media_projects', 'star_media_tasks',
+    'star_media_invoices', 'star_media_payments', 'star_media_expenses',
+    'star_media_contracts',
+    'star_media_files', 'star_media_quotations', 'star_media_waitlist',
+    'star_media_clients', 'star_media_companies', 'star_media_freelancers',
+    'star_media_contacts',
+    'star_media_monthly_statements'
+  ];
+
+  // تنفيذ فوري عند أول render
+  (() => {
+    try {
+      OPERATIONAL_LS_KEYS.forEach(key => localStorage.removeItem(key));
+    } catch (_) {}
+  })();
+
+  const getStoredState = (key, defaultValue) => {
+    // المجموعات التشغيلية دائماً تبدأ فارغة — تجاهل أي كاش سابق
+    if (OPERATIONAL_LS_KEYS.includes(key)) {
+      return sanitizeObjectToEnglishDigits(defaultValue);
+    }
+    try {
+      const stored = localStorage.getItem(key);
+      const parsed = stored ? JSON.parse(stored) : defaultValue;
+      return sanitizeObjectToEnglishDigits(parsed);
+    } catch (e) {
+      return sanitizeObjectToEnglishDigits(defaultValue);
+    }
+  };
+
+  // Core App Datasets initialized from localStorage cache (fast startup fallback)
+  const [team, setTeam] = useState(() => getStoredState('star_media_team', initialTeam));
+  const [clients, setClients] = useState(() => getStoredState('star_media_clients', initialClients));
+  const [companies, setCompanies] = useState(() => getStoredState('star_media_companies', initialCompanies));
+  const [freelancers, setFreelancers] = useState(() => getStoredState('star_media_freelancers', []));
+  const [contacts, setContacts] = useState(() => getStoredState('star_media_contacts', []));
+  const [equipment, setEquipment] = useState(() => getStoredState('star_media_equipment', initialEquipment));
+  const [bookings, setBookings] = useState(() => getStoredState('star_media_bookings', []));
+  const [projects, setProjects] = useState(() => getStoredState('star_media_projects', []));
+  const [tasks, setTasks] = useState(() => getStoredState('star_media_tasks', []));
+  const [invoices, setInvoices] = useState(() => getStoredState('star_media_invoices', []));
+  const [payments, setPayments] = useState(() => getStoredState('star_media_payments', []));
+  const [expenses, setExpenses] = useState(() => getStoredState('star_media_expenses', []));
+  const [auditLogs, setAuditLogs] = useState(() => getStoredState('star_media_auditLogs', []));
+  const [notifications, setNotifications] = useState(() => getStoredState('star_media_notifications', []));
+  const [devices, setDevices] = useState(() => getStoredState('star_media_devices', []));
+  const [settings, setSettings] = useState(() => getStoredState('star_media_settings', defaultSettings));
+  const [contracts, setContracts] = useState(() => getStoredState('star_media_contracts', []));
+  const [files, setFiles] = useState(() => getStoredState('star_media_files', []));
+  const [customRoles, setCustomRoles] = useState(() => getStoredState('star_media_customRoles', initialCustomRoles));
+
+  // New States for Comprehensive Upgrades
+  const [quotations, setQuotations] = useState(() => getStoredState('star_media_quotations', []));
+  const [waitlist, setWaitlist] = useState(() => getStoredState('star_media_waitlist', []));
+  const [privacyMode, setPrivacyMode] = useState(() => getStoredState('star_media_privacyMode', false));
+  const [isOnline, setIsOnline] = useState(() => getStoredState('star_media_isOnline', true));
+  const [pendingOfflineActions, setPendingOfflineActions] = useState(() => getStoredState('star_media_pendingOfflineActions', []));
+
+  const [isDbReady, setIsDbReady] = useState(false);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(true);
+
+  // Persistent & Robust Firebase Authentication state listener
+  useEffect(() => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (user && !user.isAnonymous) {
+        console.log("Firebase Auth active user email:", user.email);
+        setIsDbReady(true);
+        // Sync React state if needed (e.g. after page reload)
+        if (!currentUser || currentUser.email !== user.email) {
+          const matched = team.find(m => m.email && m.email.toLowerCase().trim() === user.email.toLowerCase().trim());
+          if (matched) {
+            console.log("Syncing currentUser state from Firebase session:", matched.name);
+            setCurrentUser(matched);
+            setUserRole(deriveUserRole(matched));
+            localStorage.setItem('star_media_current_user', JSON.stringify(matched));
+          }
+        }
+      } else {
+        console.log("No logged-in user in Firebase, checking current user local state...");
+        if (currentUser && currentUser.email) {
+          console.log("Locally logged in, leaving database ready for auth flow.");
+          setIsDbReady(true);
+        } else {
+          try {
+            const userCredential = await signInAnonymously(auth);
+            console.log("Authenticated anonymously with Firebase:", userCredential.user.uid);
+            setIsDbReady(true);
+          } catch (err) {
+            console.error("Anonymous authentication failed:", err);
+            setIsDbReady(true);
+          }
+        }
+      }
+    });
+    return () => unsubAuth();
+  }, [currentUser, team]);
+
+  // قائمة المجموعات التشغيلية التي لا تُزرع أبداً — تبقى فارغة حتى يضيف المستخدم بيانات حقيقية
+  const OPERATIONAL_COLLECTIONS = new Set([
+    'bookings', 'projects', 'tasks', 'invoices', 'payments', 'expenses',
+    'contracts', 'files', 'quotations',
+    'waitlist', 'clients', 'companies', 'freelancers', 'contacts'
+  ]);
+
+  // Real-time Firestore synchronization (NO seeding for operational collections)
+  useEffect(() => {
+    if (!isDbReady) return;
+
+    // مسح الكاش القديم من localStorage لأي مجموعة تشغيلية عند أول تحميل
+    const operationalKeys = [
+      'star_media_bookings', 'star_media_projects', 'star_media_tasks',
+      'star_media_invoices', 'star_media_payments', 'star_media_expenses',
+      'star_media_contracts',
+      'star_media_files', 'star_media_quotations', 'star_media_waitlist',
+      'star_media_clients', 'star_media_companies', 'star_media_freelancers',
+      'star_media_contacts',
+      'star_media_monthly_statements'
+    ];
+    operationalKeys.forEach(key => localStorage.removeItem(key));
+
+    const collectionsToSync = [
+      { name: 'team', stateSetter: setTeam, initialData: initialTeam },
+      { name: 'clients', stateSetter: setClients, initialData: [] },
+      { name: 'companies', stateSetter: setCompanies, initialData: [] },
+      { name: 'freelancers', stateSetter: setFreelancers, initialData: [] },
+      { name: 'contacts', stateSetter: setContacts, initialData: [] },
+      { name: 'equipment', stateSetter: setEquipment, initialData: initialEquipment },
+      { name: 'bookings', stateSetter: setBookings, initialData: [] },
+      { name: 'projects', stateSetter: setProjects, initialData: [] },
+      { name: 'tasks', stateSetter: setTasks, initialData: [] },
+      { name: 'invoices', stateSetter: setInvoices, initialData: [] },
+      { name: 'payments', stateSetter: setPayments, initialData: [] },
+      { name: 'expenses', stateSetter: setExpenses, initialData: [] },
+      { name: 'auditLogs', stateSetter: setAuditLogs, initialData: [] },
+      { name: 'notifications', stateSetter: setNotifications, initialData: [] },
+      { name: 'devices', stateSetter: setDevices, initialData: [] },
+      { name: 'contracts', stateSetter: setContracts, initialData: [] },
+      { name: 'files', stateSetter: setFiles, initialData: [] },
+      { name: 'customRoles', stateSetter: setCustomRoles, initialData: initialCustomRoles },
+      { name: 'quotations', stateSetter: setQuotations, initialData: [] },
+      { name: 'waitlist', stateSetter: setWaitlist, initialData: [] }
+    ];
+
+    const unsubscribes = collectionsToSync.map(({ name, stateSetter, initialData }) => {
+      return onSnapshot(
+        collection(db, name),
+        (snapshot) => {
+          const docs = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data();
+            docs.push({ 
+              ...data, 
+              id: Number(docSnap.id) || docSnap.id 
+            });
+          });
+          
+          if (docs.length > 0) {
+            if (name === 'bookings') {
+              docs.sort((a, b) => b.id - a.id);
+              setIsLoadingBookings(false);
+            } else if (name === 'auditLogs') {
+              docs.sort((a, b) => b.id - a.id);
+            } else if (name === 'notifications') {
+              docs.sort((a, b) => b.id - a.id);
+            } else if (name === 'team') {
+              try {
+                const storedUserJson = localStorage.getItem('star_media_current_user');
+                const storedUser = storedUserJson ? JSON.parse(storedUserJson) : null;
+                if (storedUser && storedUser.id) {
+                  const myMember = docs.find(m => String(m.id) === String(storedUser.id) || (m.email && storedUser.email && m.email.toLowerCase().trim() === storedUser.email.toLowerCase().trim()));
+                  if (myMember) {
+                    if (myMember.avatar !== storedUser.avatar || myMember.name !== storedUser.name || myMember.phone !== storedUser.phone) {
+                      setCurrentUser(prev => {
+                        const merged = { ...(prev || storedUser), ...myMember };
+                        try { localStorage.setItem('star_media_current_user', JSON.stringify(merged)); } catch (_) {}
+                        return merged;
+                      });
+                    }
+                  }
+                }
+              } catch (_) {}
+            } else if (name === 'devices') {
+              const myDevId = getDeviceId();
+              const myDev = docs.find(d => String(d.id) === String(myDevId));
+              if (myDev && myDev.status === 'terminated') {
+                console.warn("Session terminated remotely. Logging out...");
+                alert("⚠️ تم إنهاء جلستك من قِبل المشرف أو جهاز آخر.");
+                logoutUser();
+                return;
+              }
+              const annotated = docs.map(d => ({
+                ...d,
+                isCurrent: String(d.id) === String(myDevId)
+              }));
+              stateSetter(annotated);
+              return;
+            }
+            stateSetter(docs);
+          } else {
+            // المجموعة فارغة من السيرفر
+            const isFromCache = snapshot.metadata.fromCache;
+            if (!isFromCache && navigator.onLine) {
+              if (OPERATIONAL_COLLECTIONS.has(name)) {
+                // المجموعات التشغيلية لا تُزرع — تبقى فارغة
+                console.log(`Collection '${name}' is empty — production mode, no seeding.`);
+                stateSetter([]);
+                if (name === 'bookings') setIsLoadingBookings(false);
+              } else if (initialData && initialData.length > 0) {
+                // فقط المجموعات الهيكلية (team, equipment, customRoles) تُزرع عند الحاجة
+                console.log(`Firestore collection '${name}' is empty on server, seeding structural data...`);
+                const batch = writeBatch(db);
+                initialData.forEach(item => {
+                  const docRef = doc(collection(db, name), String(item.id));
+                  batch.set(docRef, item);
+                });
+                batch.commit()
+                  .then(() => {
+                    if (name === 'bookings') setIsLoadingBookings(false);
+                  })
+                  .catch(err => console.error(`Error seeding ${name}:`, err));
+              } else {
+                stateSetter([]);
+                if (name === 'bookings') setIsLoadingBookings(false);
+              }
+            } else {
+              console.log(`Collection '${name}' returned empty from cache/offline. Keeping cached state.`);
+              if (name === 'bookings') setIsLoadingBookings(false);
+            }
+          }
+        },
+        (error) => {
+          console.warn(`Firestore listener handled gracefully for collection '${name}':`, error?.message || error);
+          if (name === 'bookings') setIsLoadingBookings(false);
+        }
+      );
+    });
+
+    const unsubSettings = onSnapshot(
+      doc(db, 'settings', 'defaultConfig'),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setSettings(docSnap.data());
+        } else {
+          setDoc(doc(db, 'settings', 'defaultConfig'), defaultSettings).catch(err => console.warn('Error setting defaultConfig:', err));
+        }
+      },
+      (error) => {
+        console.warn('Firestore listener handled gracefully for [settings]:', error?.message || error);
+      }
+    );
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+      unsubSettings();
+    };
+  }, [isDbReady]);
+
+  // Dynamic CSS variables injector for branding colors
+  useEffect(() => {
+    if (settings) {
+      const identity = settings.companyIdentity || {};
+      const primaryColor = identity.primaryColor || settings.appearance?.primaryColor || '#6366f1';
+      const buttonColor = identity.buttonColor || settings.appearance?.primaryHover || '#4f46e5';
+      
+      document.documentElement.style.setProperty('--primary-color', primaryColor);
+      document.documentElement.style.setProperty('--primary-hover', buttonColor);
+      document.documentElement.style.setProperty('--bg-sidebar-active', `${primaryColor}2e`);
+      
+      const fontFamily = settings.appearance?.fontFamily || 'Cairo';
+      document.documentElement.style.setProperty('--font-family', `'${fontFamily}', 'Inter', sans-serif`);
+    }
+  }, [settings]);
+
+  // Write changes to localStorage as a redundant secondary cache
+  useEffect(() => { localStorage.setItem('star_media_team', JSON.stringify(team)); }, [team]);
+  useEffect(() => { localStorage.setItem('star_media_clients', JSON.stringify(clients)); }, [clients]);
+
+  // Auto-register device FCM token when DB is ready and user is logged in
+  useEffect(() => {
+    if (isDbReady && currentUser && currentUser.id) {
+      registerDeviceToken(currentUser).catch(err => console.warn('Error auto-registering device token:', err));
+    }
+  }, [isDbReady, currentUser]);
+  useEffect(() => { localStorage.setItem('star_media_companies', JSON.stringify(companies)); }, [companies]);
+  useEffect(() => { localStorage.setItem('star_media_freelancers', JSON.stringify(freelancers)); }, [freelancers]);
+  useEffect(() => { localStorage.setItem('star_media_equipment', JSON.stringify(equipment)); }, [equipment]);
+  useEffect(() => { localStorage.setItem('star_media_bookings', JSON.stringify(bookings)); }, [bookings]);
+  useEffect(() => { localStorage.setItem('star_media_projects', JSON.stringify(projects)); }, [projects]);
+  useEffect(() => { localStorage.setItem('star_media_tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { localStorage.setItem('star_media_invoices', JSON.stringify(invoices)); }, [invoices]);
+  useEffect(() => { localStorage.setItem('star_media_payments', JSON.stringify(payments)); }, [payments]);
+  useEffect(() => { localStorage.setItem('star_media_expenses', JSON.stringify(expenses)); }, [expenses]);
+  useEffect(() => { localStorage.setItem('star_media_auditLogs', JSON.stringify(auditLogs)); }, [auditLogs]);
+  useEffect(() => { localStorage.setItem('star_media_notifications', JSON.stringify(notifications)); }, [notifications]);
+  useEffect(() => { localStorage.setItem('star_media_devices', JSON.stringify(devices)); }, [devices]);
+
+  // Auto-register current device session with real OS, browser, device model
+  useEffect(() => {
+    if (!currentUser || !currentUser.id) return;
+    const info = getDeviceInfo();
+
+    let loginAt = localStorage.getItem('star_media_device_login_at');
+    if (!loginAt) {
+      loginAt = new Date().toISOString();
+      try { localStorage.setItem('star_media_device_login_at', loginAt); } catch (_) {}
+    }
+
+    const authUid = auth?.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null;
+    const currentDevEntry = {
+      id: info.id,
+      sessionId: info.sessionId,
+      name: info.deviceName,
+      os: info.os,
+      browser: info.browser,
+      type: info.type,
+      screen: info.screenResolution,
+      ip: '127.0.0.1 / مباشر',
+      loginAt: loginAt,
+      lastActive: new Date().toISOString(),
+      userId: authUid || currentUser.id,
+      userName: currentUser.name || 'عاهد العماري',
+      userEmail: currentUser.email || 'ahdalamary@gmail.com',
+      isCurrent: true,
+      status: 'active'
+    };
+
+    setDevices(prev => {
+      const existing = (prev || []).filter(d => d.status !== 'terminated');
+      const filtered = existing.filter(d => String(d.id) !== String(info.id));
+      return [{ ...currentDevEntry }, ...filtered.map(d => ({ ...d, isCurrent: false }))];
+    });
+
+    if (isDbReady && auth?.currentUser && !auth.currentUser.isAnonymous) {
+      logFirestoreOp('setDoc', 'devices', String(info.id), () => 
+        setDoc(doc(db, 'devices', String(info.id)), currentDevEntry, { merge: true })
+      ).catch(() => {});
+    }
+
+    // Heartbeat every 60 seconds updating lastActive
+    const heartbeatInterval = setInterval(() => {
+      if (isDbReady && auth?.currentUser && !auth.currentUser.isAnonymous && currentUser && currentUser.id) {
+        const nowIso = new Date().toISOString();
+        setDoc(doc(db, 'devices', String(info.id)), { 
+          lastActive: nowIso, 
+          status: 'active' 
+        }, { merge: true }).catch(() => {});
+      }
+    }, 60000);
+
+    return () => clearInterval(heartbeatInterval);
+  }, [currentUser, isDbReady, logFirestoreOp]);
+
+  useEffect(() => { localStorage.setItem('star_media_settings', JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { localStorage.setItem('star_media_contracts', JSON.stringify(contracts)); }, [contracts]);
+  useEffect(() => { localStorage.setItem('star_media_files', JSON.stringify(files)); }, [files]);
+  useEffect(() => { localStorage.setItem('star_media_customRoles', JSON.stringify(customRoles)); }, [customRoles]);
+  useEffect(() => { localStorage.setItem('star_media_quotations', JSON.stringify(quotations)); }, [quotations]);
+  useEffect(() => { localStorage.setItem('star_media_waitlist', JSON.stringify(waitlist)); }, [waitlist]);
+  useEffect(() => { localStorage.setItem('star_media_privacyMode', JSON.stringify(privacyMode)); }, [privacyMode]);
+  useEffect(() => { localStorage.setItem('star_media_isOnline', JSON.stringify(isOnline)); }, [isOnline]);
+  useEffect(() => { localStorage.setItem('star_media_pendingOfflineActions', JSON.stringify(pendingOfflineActions)); }, [pendingOfflineActions]);
+
+  // Modal Control States
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedDateForBooking, setSelectedDateForBooking] = useState('');
+  const [editingBooking, setEditingBooking] = useState(null);
+
+  // Overlay state utilities
+  const isSearchModalOpen = activeOverlay === 'SEARCH';
+  const setIsSearchModalOpen = (open) => setActiveOverlay(open ? 'SEARCH' : 'NONE');
+
+  const isBookingDetailOpen = activeOverlay === 'BOOKING_DETAIL';
+  const setIsBookingDetailOpen = (open) => setActiveOverlay(open ? 'BOOKING_DETAIL' : 'NONE');
+
+  const isBookingFormOpen = activeOverlay === 'BOOKING';
+  const setIsBookingFormOpen = (open) => {
+    if (!open) setEditingBooking(null);
+    setActiveOverlay(open ? 'BOOKING' : 'NONE');
+  };
+
+  const isPaymentModalOpen = activeOverlay === 'PAYMENT';
+  const setIsPaymentModalOpen = (open) => setActiveOverlay(open ? 'PAYMENT' : 'NONE');
+
+  const showCelebration = (message) => {
+    setCelebrationToast(message);
+    triggerCelebration();
+    setTimeout(() => {
+      setCelebrationToast(null);
+    }, 4000);
+  };
+
+  // Helper to open booking form for either creation or editing
+  const openBookingForm = useCallback((bookingToEdit = null, defaultDate = null) => {
+    setEditingBooking(bookingToEdit || null);
+    if (bookingToEdit) {
+      setSelectedDateForBooking(bookingToEdit.date || bookingToEdit.startDate || '');
+    } else if (defaultDate) {
+      setSelectedDateForBooking(defaultDate);
+    }
+    setActiveOverlay('BOOKING');
+  }, []);
+
+  // Helper to open booking form with prefilled date
+  const openBookingFormWithDate = (dateStr) => {
+    openBookingForm(null, dateStr);
+  };
+
+
+  // ─── CLOUD FIRESTORE CRUD ACTIONS ───────────────────────────────────────────
+  const addAuditLog = useCallback((action, details, icon = '📝', meta = {}) => {
+    const activeUid = auth.currentUser?.uid || null;
+    const devInfo = getDeviceInfo();
+    const newLog = {
+      id: Date.now(),
+      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      userName: currentUser?.name || 'عاهد العماري',
+      userEmail: currentUser?.email || 'ahdalamary@gmail.com',
+      userRole: userRole === 'admin' ? 'مشرف النظام' : 'عضو فريق',
+      action,
+      details,
+      icon,
+      userId: activeUid,
+      device: devInfo.deviceName,
+      os: devInfo.os,
+      browser: devInfo.browser,
+      deviceType: devInfo.type,
+      ip: meta?.ip || 'شبكة محلية / مباشر'
+    };
+    setAuditLogs(prev => [newLog, ...(prev || [])]);
+    logFirestoreOp('setDoc', 'auditLogs', String(newLog.id), () => setDoc(doc(db, 'auditLogs', String(newLog.id)), newLog)).catch(err => {
+      console.warn("Firestore error adding audit log [collection: auditLogs]:", err?.message || err);
+    });
+  }, [currentUser, userRole, logFirestoreOp]);
+
+  const clearAuditLogs = useCallback(async () => {
+    if (userRole !== 'admin') return;
+    const previousLogs = [...(auditLogs || [])];
+    setAuditLogs([]);
+    localStorage.removeItem('star_media_auditLogs');
+    try {
+      const batch = writeBatch(db);
+      previousLogs.forEach(log => {
+        batch.delete(doc(db, 'auditLogs', String(log.id)));
+      });
+      await batch.commit();
+    } catch (e) {
+      console.warn('Error clearing audit logs in Firestore:', e);
+    }
+    addAuditLog('مسح سجل النشاطات', 'تم تفريغ وأرشفة سجل النشاطات والعمليات بواسطة المشرف', '🗑️');
+  }, [userRole, auditLogs, addAuditLog]);
+
+  const exportAuditLogs = useCallback(() => {
+    try {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(auditLogs, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `lensflow_audit_logs_${new Date().toISOString().substring(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    } catch (e) {
+      console.error("Export audit logs error:", e);
+    }
+  }, [auditLogs]);
+
+  const logoutDevice = useCallback(async (deviceId) => {
+    const currentDevId = getDeviceId();
+    const isThisDevice = String(deviceId) === String(currentDevId);
+
+    setDevices(prev => (prev || []).filter(d => String(d.id) !== String(deviceId)));
+
+    try {
+      await logFirestoreOp('setDoc', 'devices', String(deviceId), () => 
+        setDoc(doc(db, 'devices', String(deviceId)), { 
+          status: 'terminated', 
+          terminatedAt: new Date().toISOString() 
+        }, { merge: true })
+      );
+    } catch (err) {
+      console.warn('terminate device error:', err);
+    }
+
+    addAuditLog('إنهاء جلسة جهاز', `تم إنهاء جلسة الجهاز المعرف (${deviceId})`, '📱');
+
+    if (isThisDevice) {
+      logoutUser();
+    }
+  }, [logoutUser, addAuditLog, logFirestoreOp]);
+
+  const logoutAllOtherDevices = useCallback(async () => {
+    const currentDevId = getDeviceId();
+    const others = (devices || []).filter(d => String(d.id) !== String(currentDevId) && d.status !== 'terminated');
+    setDevices(prev => (prev || []).filter(d => String(d.id) === String(currentDevId)));
+    for (const dev of others) {
+      try {
+        await logFirestoreOp('setDoc', 'devices', String(dev.id), () => 
+          setDoc(doc(db, 'devices', String(dev.id)), { 
+            status: 'terminated', 
+            terminatedAt: new Date().toISOString() 
+          }, { merge: true })
+        );
+      } catch (_) {}
+    }
+    addAuditLog('تسجيل خروج من الأجهزة الأخرى', `تم إنهاء جلسات ${others.length} جهاز آخر بنجاح`, '🔒');
+    showCelebration('تم تسجيل الخروج بنجاح من جميع الأجهزة الأخرى! 🔒✨');
+  }, [devices, addAuditLog, logFirestoreOp, showCelebration]);
+
+  const logoutAllDevices = useCallback(async () => {
+    const all = (devices || []).filter(d => d.status !== 'terminated');
+    for (const dev of all) {
+      try {
+        await logFirestoreOp('setDoc', 'devices', String(dev.id), () => 
+          setDoc(doc(db, 'devices', String(dev.id)), { 
+            status: 'terminated', 
+            terminatedAt: new Date().toISOString() 
+          }, { merge: true })
+        );
+      } catch (_) {}
+    }
+    addAuditLog('تسجيل خروج من جميع الأجهزة', 'تم إنهاء جميع الجلسات النشطة على كل الأجهزة', '🔒');
+    logoutUser();
+  }, [devices, addAuditLog, logFirestoreOp, logoutUser]);
+
+
+  // Bookings CRUD
+  const addBooking = useCallback((bookingData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(bookingData);
+    const activeUid = auth.currentUser?.uid || 'anonymous';
+    
+    let targetDates = [];
+    if (sanitizedData.bookingDates && Array.isArray(sanitizedData.bookingDates) && sanitizedData.bookingDates.length > 0) {
+      targetDates = sanitizedData.bookingDates;
+    } else if (sanitizedData.recurringType && sanitizedData.recurringType !== 'none') {
+      const count = Number(sanitizedData.recurringCount || 1);
+      const start = new Date(sanitizedData.date || new Date().toISOString().substring(0, 10));
+      for (let i = 0; i < count; i++) {
+        const d = new Date(start);
+        if (sanitizedData.recurringType === 'weekly') {
+          d.setDate(start.getDate() + (i * 7));
+        } else if (sanitizedData.recurringType === 'monthly') {
+          d.setMonth(start.getMonth() + i);
+        } else if (sanitizedData.recurringType === 'daily') {
+          d.setDate(start.getDate() + i);
+        }
+        targetDates.push(d.toISOString().substring(0, 10));
+      }
+    } else {
+      targetDates = [sanitizedData.date || new Date().toISOString().substring(0, 10)];
+    }
+
+    const defaultChecklist = [
+      { text: 'تأكيد العميل', done: false },
+      { text: 'تأكيد المصور', done: false },
+      { text: 'تجهيز المهمة', done: false },
+      { text: 'الوصول للموقع', done: false },
+      { text: 'بدء التصوير', done: false },
+      { text: 'انتهاء التصوير', done: false },
+      { text: 'تسليم العمل', done: false },
+      { text: 'إصدار الفاتورة', done: false },
+      { text: 'استلام المبلغ', done: false }
+    ];
+
+    const newBookings = targetDates.map((dateStr, index) => {
+      const bPrice = sanitizedData.totalPrice !== undefined && sanitizedData.totalPrice !== '' && sanitizedData.totalPrice !== null ? Number(sanitizedData.totalPrice) : null;
+      const bDeposit = sanitizedData.deposit !== undefined && sanitizedData.deposit !== '' && sanitizedData.deposit !== null ? Number(sanitizedData.deposit) : null;
+      const bPaid = sanitizedData.paidAmount !== undefined && sanitizedData.paidAmount !== '' && sanitizedData.paidAmount !== null ? Number(sanitizedData.paidAmount) : (bDeposit || 0);
+      const bRemaining = bPrice !== null ? Math.max(0, bPrice - bPaid) : null;
+
+      let fStatus = sanitizedData.financialStatus;
+      if (!fStatus) {
+        if (bPrice === null || bPrice === undefined || bPrice === '') {
+          fStatus = 'no_price';
+        } else if (bPaid >= bPrice && bPrice > 0) {
+          fStatus = 'settled';
+        } else if (sanitizedData.invoiceNumber) {
+          fStatus = 'invoice_added';
+        } else if (bPaid < bPrice) {
+          fStatus = 'due';
+        } else {
+          fStatus = 'price_set';
+        }
+      }
+
+      const isMobileDevice = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const bookingSource = `${userRole === 'admin' ? 'المشرف' : 'الموظف'} (${isMobileDevice ? 'جوال' : 'ويب'})`;
+
+      return {
+        ...sanitizedData,
+        id: Date.now() + index,
+        bookingNumber: `BK-2026-${Math.floor(Math.random() * 900) + 100}`,
+        date: dateStr,
+        startDate: dateStr,
+        endDate: dateStr,
+        totalPrice: bPrice,
+        deposit: bDeposit,
+        paidAmount: bPaid,
+        remainingAmount: bRemaining,
+        status: sanitizedData.status || 'مؤكد',
+        paymentStatus: bPrice === null ? 'لم يحدد بعد' : (bRemaining === 0 ? 'مدفوع' : (bPaid > 0 ? 'جزئي' : 'غير مدفوع')),
+        financialStatus: fStatus,
+        checklist: sanitizedData.checklist || defaultChecklist,
+        changeLogs: [
+          { timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19), userName: currentUser?.name || 'النظام', action: 'إنشاء الحجز' }
+        ],
+        locked: sanitizedData.status === 'مؤكد',
+        userId: activeUid,
+        ownerId: activeUid,
+        creatorId: activeUid,
+        uid: activeUid,
+        role: userRole || 'employee',
+        source: sanitizedData.source || bookingSource
+      };
+    });
+
+    // Optimistic local state update for instant UI responsiveness
+    setBookings(prev => [...newBookings, ...(prev || [])]);
+
+    // Persist to Firestore and wait for execution (single source of truth)
+    const promises = newBookings.map(booking => {
+      return logFirestoreOp('setDoc', 'bookings', String(booking.id), () => setDoc(doc(db, 'bookings', String(booking.id)), booking));
+    });
+
+    Promise.all(promises)
+      .then(() => {
+        console.log("Firestore bookings insert succeeded.");
+        showCelebration('تم إنشاء الحجز وتزامنه بنجاح! 🎉');
+        newBookings.forEach(booking => {
+          triggerNotificationEvent('booking_created', booking, currentUser);
+        });
+      })
+      .catch(err => {
+        console.error(`Firestore write error [collection: bookings]:`, err);
+      });
+
+    if (newBookings.length === 1) {
+      addAuditLog('إنشاء حجز', `تم إنشاء حجز جديد: ${newBookings[0].title}`, '📅');
+    } else {
+      addAuditLog('إنشاء حجوزات متكررة', `تم إنشاء عدد ${newBookings.length} حجوزات متكررة لـ ${newBookings[0].title}`, '📅');
+    }
+    return newBookings[0];
+  }, [addAuditLog, currentUser, userRole, logFirestoreOp]);
+
+  const updateBooking = useCallback((bookingId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = bookings.find(b => b.id === Number(bookingId) || String(b.id) === String(bookingId));
+    if (!target) return null;
+
+    const changes = [];
+    if (sanitizedFields.date && sanitizedFields.date !== target.date) changes.push(`تغيير التاريخ من ${target.date} إلى ${sanitizedFields.date}`);
+    if (sanitizedFields.status && sanitizedFields.status !== target.status) changes.push(`تغيير الحالة من ${target.status} إلى ${sanitizedFields.status}`);
+    if (sanitizedFields.teamAssigned && JSON.stringify(sanitizedFields.teamAssigned) !== JSON.stringify(target.teamAssigned)) changes.push(`تعديل الفريق المكلف`);
+    
+    const newLogs = [...(target.changeLogs || [])];
+    if (changes.length > 0) {
+      newLogs.push({
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userName: currentUser?.name || 'النظام',
+        action: changes.join(' | ')
+      });
+    }
+
+    const merged = {
+      ...target,
+      ...sanitizedFields,
+      changeLogs: newLogs,
+      locked: sanitizedFields.status === 'مؤكد' || target.status === 'مؤكد'
+    };
+
+    const price = merged.totalPrice;
+    const paid = merged.paidAmount || 0;
+    const inv = merged.invoiceNumber || merged.invoiceId;
+
+    if (sanitizedFields.financialStatus === undefined) {
+      if (price === null || price === undefined || price === '') {
+        merged.financialStatus = 'no_price';
+      } else if (paid >= price && price > 0) {
+        merged.financialStatus = 'settled';
+      } else if (inv) {
+        merged.financialStatus = 'invoice_added';
+      } else if (paid < price) {
+        merged.financialStatus = 'due';
+      } else {
+        merged.financialStatus = 'price_set';
+      }
+    }
+
+    // Optimistic local state update for instant UI responsiveness
+    setBookings(prev => (prev || []).map(b => b.id === Number(bookingId) ? merged : b));
+    setSelectedBooking(prev => (prev && prev.id === Number(bookingId) ? merged : prev));
+
+    logFirestoreOp('setDoc', 'bookings', String(bookingId), () => setDoc(doc(db, 'bookings', String(bookingId)), merged))
+      .then(() => {
+        if (changes.length > 0) {
+          triggerNotificationEvent('booking_updated', merged, currentUser);
+        }
+      })
+      .catch(err => {
+        console.error(`Firestore write error [collection: bookings, action: update, doc: ${bookingId}]:`, err);
+      });
+    addAuditLog('تحديث حجز', `تم تعديل تفاصيل الحجز رقم ${bookingId}`, '📅');
+    return merged;
+  }, [addAuditLog, bookings, currentUser, logFirestoreOp]);
+
+  const deleteBooking = useCallback((bookingId) => {
+    const target = bookings.find(b => b.id === Number(bookingId));
+    if (!target) return;
+
+    if (target.status === 'مؤكد') {
+      const updated = { ...target, status: 'ملغي' };
+      setBookings(prev => (prev || []).map(b => b.id === Number(bookingId) ? updated : b));
+      setSelectedBooking(prev => (prev && prev.id === Number(bookingId) ? updated : prev));
+
+      logFirestoreOp('setDoc', 'bookings', String(bookingId), () => setDoc(doc(db, 'bookings', String(bookingId)), updated))
+        .then(() => {
+          triggerNotificationEvent('booking_cancelled', updated, currentUser);
+        })
+        .catch(err => {
+          console.error(`Firestore write error [collection: bookings, action: cancel, doc: ${bookingId}]:`, err);
+        });
+      addAuditLog('إلغاء حجز مؤكد', `تم إلغاء الحجز المؤكد رقم ${bookingId} بدلاً من حذفه بالكامل`, '⚠️');
+      showCelebration('تم إلغاء الحجز المؤكد أمنياً 🔒');
+      return;
+    }
+
+    setBookings(prev => (prev || []).filter(b => b.id !== Number(bookingId)));
+    setSelectedBooking(prev => (prev && prev.id === Number(bookingId) ? null : prev));
+
+    logFirestoreOp('deleteDoc', 'bookings', String(bookingId), () => deleteDoc(doc(db, 'bookings', String(bookingId))))
+      .then(() => {
+        triggerNotificationEvent('booking_deleted', target, currentUser);
+      })
+      .catch(err => {
+        console.error(`Firestore delete error [collection: bookings, doc: ${bookingId}]:`, err);
+      });
+    addAuditLog('حذف حجز', `تم إزالة الحجز رقم ${bookingId}`, '❌');
+  }, [addAuditLog, bookings, currentUser, logFirestoreOp]);
+
+  // Tasks CRUD
+  const addTask = useCallback((taskData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(taskData);
+    const newTask = {
+      ...sanitizedData,
+      id: Date.now(),
+      progress: 0,
+      checklist: (sanitizedData.checklist || []).map(text => ({ text, done: false }))
+    };
+    logFirestoreOp('setDoc', 'tasks', String(newTask.id), () => setDoc(doc(db, 'tasks', String(newTask.id)), newTask)).catch(err => console.warn('addTask error:', err));
+    addAuditLog('إسناد مهمة', `تم إسناد مهمة جديدة: ${newTask.title}`, '🎯');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const updateTask = useCallback((taskId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = tasks.find(t => t.id === Number(taskId));
+    if (target) {
+      const merged = { ...target, ...sanitizedFields };
+      // تحديث فوري للـ state المحلي (Optimistic Update) لمنع Stale Closure
+      setTasks(prev => prev.map(t => t.id === Number(taskId) ? merged : t));
+      logFirestoreOp('setDoc', 'tasks', String(taskId), () => setDoc(doc(db, 'tasks', String(taskId)), merged)).catch(err => console.warn('updateTask error:', err));
+      addAuditLog('تحديث مهمة', `تم تعديل تفاصيل المهمة رقم ${taskId}`, '✓');
+    }
+  }, [addAuditLog, tasks, logFirestoreOp]);
+
+  const deleteTask = useCallback((taskId) => {
+    logFirestoreOp('deleteDoc', 'tasks', String(taskId), () => deleteDoc(doc(db, 'tasks', String(taskId)))).catch(err => console.warn('deleteTask error:', err));
+    addAuditLog('حذف مهمة', `تم إزالة المهمة رقم ${taskId}`, '🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const completeTask = useCallback((taskId) => {
+    const task = tasks.find(t => t.id === Number(taskId));
+    if (!task) return;
+    // منع إعادة إكمال مهمة مكتملة مسبقاً
+    if (task.status === 'مكتملة') return;
+
+    const updatedTask = { ...task, status: 'مكتملة', progress: 100 };
+    // تحديث فوري للـ state المحلي (Optimistic Update) قبل Firestore
+    setTasks(prev => prev.map(t => t.id === Number(taskId) ? updatedTask : t));
+    logFirestoreOp('setDoc', 'tasks', String(taskId), () => setDoc(doc(db, 'tasks', String(taskId)), updatedTask)).catch(err => console.warn('completeTask error:', err));
+    
+    const earnedPoints = task.points || 10;
+    const member = team.find(m => m.id === task.assigneeId);
+    if (member) {
+      const updatedMember = { ...member, points: (member.points || 0) + earnedPoints, tasksCompleted: (member.tasksCompleted || 0) + 1 };
+      setTeam(prev => prev.map(m => m.id === member.id ? updatedMember : m));
+      logFirestoreOp('setDoc', 'team', String(member.id), () => setDoc(doc(db, 'team', String(member.id)), updatedMember)).catch(err => console.warn('completeTask member update error:', err));
+    }
+
+    showCelebration(`أحسنت يا ${task.assigneeName}! تم إكمال المهمة بنجاح 🎉 (+${earnedPoints} نقطة إنجاز)`);
+    addAuditLog('إكمال مهمة', `تم إنجاز المهمة: ${task.title} بواسطة ${task.assigneeName}`, '🎉');
+  }, [tasks, team, addAuditLog, logFirestoreOp]);
+
+  const addNotification = useCallback((title, message, type = 'general', target = null) => {
+    const now = new Date();
+    const timeFormatted = now.toLocaleTimeString('ar-SA-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+    const dateFormatted = now.toISOString().substring(0, 10);
+    const newNotif = {
+      id: Date.now(),
+      title,
+      message,
+      time: timeFormatted,
+      date: dateFormatted,
+      timestamp: now.toISOString(),
+      read: false,
+      type, // 'booking' | 'task' | 'financial' | 'system' | 'general'
+      targetTab: target?.tab || (type === 'booking' ? 'bookings' : (type === 'task' ? 'tasks' : (type === 'financial' ? 'invoices' : 'dashboard'))),
+      targetId: target?.id || null
+    };
+    setNotifications(prev => [newNotif, ...(prev || [])]);
+    logFirestoreOp('setDoc', 'notifications', String(newNotif.id), () => 
+      setDoc(doc(db, 'notifications', String(newNotif.id)), newNotif)
+    ).catch(err => console.warn('addNotification error:', err));
+  }, [logFirestoreOp]);
+
+  const toggleNotificationRead = useCallback((notificationId) => {
+    const target = (notifications || []).find(n => n.id === Number(notificationId));
+    if (target) {
+      const updated = { ...target, read: !target.read };
+      setNotifications(prev => prev.map(n => n.id === Number(notificationId) ? updated : n));
+      logFirestoreOp('setDoc', 'notifications', String(notificationId), () => 
+        setDoc(doc(db, 'notifications', String(notificationId)), updated)
+      ).catch(err => console.warn('toggleNotificationRead error:', err));
+    }
+  }, [notifications, logFirestoreOp]);
+
+  const deleteNotification = useCallback((notificationId) => {
+    setNotifications(prev => (prev || []).filter(n => Number(n.id) !== Number(notificationId)));
+    logFirestoreOp('deleteDoc', 'notifications', String(notificationId), () => 
+      deleteDoc(doc(db, 'notifications', String(notificationId)))
+    ).catch(err => console.warn('deleteNotification error:', err));
+  }, [logFirestoreOp]);
+
+  const clearAllNotifications = useCallback(async () => {
+    const items = [...(notifications || [])];
+    setNotifications([]);
+    localStorage.removeItem('star_media_notifications');
+    try {
+      const batch = writeBatch(db);
+      items.forEach(n => {
+        batch.delete(doc(db, 'notifications', String(n.id)));
+      });
+      await batch.commit();
+    } catch (e) {
+      console.warn('clearAllNotifications firestore error:', e);
+    }
+  }, [notifications]);
+
+
+  const checkInLocation = useCallback((taskId, checkInType, coords = '24.7136, 46.6753') => {
+    const t = tasks.find(task => task.id === Number(taskId));
+    if (!t) return;
+    
+    const now = new Date().toLocaleTimeString('ar-EG-u-nu-latn', { hour: '2-digit', minute: '2-digit' });
+    const updatedTask = { ...t };
+    
+    if (checkInType === 'heading') {
+      updatedTask.status = 'في الطريق';
+      updatedTask.headingTime = now;
+      logFirestoreOp('setDoc', 'tasks', String(taskId), () => setDoc(doc(db, 'tasks', String(taskId)), updatedTask)).catch(err => console.warn('checkInLocation error:', err));
+      addAuditLog('بدء التوجه للموقع', `المصور بدأ التوجه للمهمة: ${t.title}`, '📍');
+      addNotification('بدء التوجه 📍', `${currentUser?.name} بدأ التوجه لموقع المهمة: ${t.title}`, 'task');
+    } else if (checkInType === 'arrived') {
+      updatedTask.status = 'وصلت';
+      updatedTask.arrivalTime = now;
+      updatedTask.coords = coords;
+      logFirestoreOp('setDoc', 'tasks', String(taskId), () => setDoc(doc(db, 'tasks', String(taskId)), updatedTask)).catch(err => console.warn('checkInLocation error:', err));
+      addAuditLog('الوصول للموقع', `وصل المصور للموقع للمهمة: ${t.title} (إحداثيات: ${coords})`, '📍');
+      addNotification('وصلت للموقع 📍', `وصل ${currentUser?.name} لموقع المهمة: ${t.title}`, 'task');
+    }
+  }, [currentUser, tasks, addAuditLog, addNotification, logFirestoreOp]);
+
+  const updateTaskStatus = useCallback((taskId, status, progress) => {
+    const target = tasks.find(t => t.id === Number(taskId));
+    if (target) {
+      // منع تغيير حالة مهمة مكتملة إلى حالة أدنى
+      if (target.status === 'مكتملة' && status !== 'مكتملة') return;
+      const merged = { ...target, status, progress };
+      // تحديث فوري للـ state المحلي (Optimistic Update)
+      setTasks(prev => prev.map(t => t.id === Number(taskId) ? merged : t));
+      logFirestoreOp('setDoc', 'tasks', String(taskId), () => setDoc(doc(db, 'tasks', String(taskId)), merged)).catch(err => console.warn('updateTaskStatus error:', err));
+      addAuditLog('تحديث حالة المهمة', `تم تغيير حالة المهمة #${taskId} إلى ${status}`, '✓');
+    }
+  }, [addAuditLog, tasks, logFirestoreOp]);
+
+  const updateUserProfile = useCallback(async (profileData) => {
+    if (!currentUser) return;
+    const sanitizedData = sanitizeObjectToEnglishDigits(profileData);
+    const updatedUser = { ...currentUser, ...sanitizedData };
+
+    // 1. Immediate React state update
+    setCurrentUser(updatedUser);
+
+    // 2. Persist to localStorage
+    try {
+      localStorage.setItem('star_media_current_user', JSON.stringify(updatedUser));
+    } catch (e) {
+      console.warn('Failed to save user to localStorage:', e);
+    }
+
+    // 3. Update team local state
+    setTeam(prev => (prev || []).map(m => String(m.id) === String(currentUser.id) ? { ...m, ...sanitizedData } : m));
+
+    // 4. Persist to Firestore team & users collections
+    try {
+      if (currentUser.id) {
+        await logFirestoreOp('setDoc', 'team', String(currentUser.id), () => 
+          setDoc(doc(db, 'team', String(currentUser.id)), updatedUser, { merge: true })
+        );
+        await logFirestoreOp('setDoc', 'users', String(currentUser.id), () => 
+          setDoc(doc(db, 'users', String(currentUser.id)), updatedUser, { merge: true })
+        ).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Failed to sync user profile to Firestore:', err);
+    }
+
+    addAuditLog('تحديث الملف الشخصي', `تم تحديث بيانات وصورة الملف الشخصي للمستخدم (${updatedUser.name || currentUser.name})`, '👤');
+    return updatedUser;
+  }, [currentUser, logFirestoreOp, addAuditLog]);
+
+  const addFile = useCallback((fileData) => {
+    const newFile = {
+      id: Date.now(),
+      ...fileData,
+      uploadedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      uploadedBy: currentUser?.name || 'موظف'
+    };
+    logFirestoreOp('setDoc', 'files', String(newFile.id), () => setDoc(doc(db, 'files', String(newFile.id)), newFile)).catch(err => console.warn('addFile error:', err));
+  }, [currentUser, logFirestoreOp]);
+
+  const deleteFile = useCallback((fileId) => {
+    logFirestoreOp('deleteDoc', 'files', String(fileId), () => deleteDoc(doc(db, 'files', String(fileId)))).catch(err => console.warn('deleteFile error:', err));
+  }, [logFirestoreOp]);
+
+  // Clients CRUD
+  const addClient = useCallback((clientData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(clientData);
+    const newClient = {
+      ...sanitizedData,
+      id: Date.now(),
+      bookingsCount: 0,
+      totalSpent: 0
+    };
+    logFirestoreOp('setDoc', 'clients', String(newClient.id), () => setDoc(doc(db, 'clients', String(newClient.id)), newClient))
+      .then(() => {
+        triggerNotificationEvent('client_created', newClient, currentUser);
+      })
+      .catch(err => console.warn('addClient error:', err));
+    addAuditLog('إضافة عميل', `تم تسجيل عميل جديد: ${newClient.name}`, '👤');
+  }, [addAuditLog, currentUser, logFirestoreOp]);
+
+  const updateClient = useCallback((clientId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = clients.find(c => c.id === Number(clientId));
+    if (target) {
+      const merged = { ...target, ...sanitizedFields };
+      logFirestoreOp('setDoc', 'clients', String(clientId), () => setDoc(doc(db, 'clients', String(clientId)), merged)).catch(err => console.warn('updateClient error:', err));
+    }
+  }, [clients, logFirestoreOp]);
+
+  const deleteClient = useCallback((clientId) => {
+    const target = clients.find(c => c.id === Number(clientId));
+    if (!target) return;
+    logFirestoreOp('deleteDoc', 'clients', String(clientId), () => deleteDoc(doc(db, 'clients', String(clientId))))
+      .then(() => {
+        triggerNotificationEvent('client_deleted', target, currentUser);
+      })
+      .catch(err => {
+        console.error(`Firestore delete error [collection: clients, doc: ${clientId}]:`, err);
+      });
+    addAuditLog('حذف عميل', `تم إزالة العميل: ${target.name}`, '🗑️');
+  }, [addAuditLog, clients, currentUser, logFirestoreOp]);
+
+  // Freelancers CRUD
+  const addFreelancer = useCallback((freelancerData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(freelancerData);
+    const newFreelancer = {
+      ...sanitizedData,
+      id: Date.now(),
+      bookingsCount: 0,
+      totalSpent: 0
+    };
+    logFirestoreOp('setDoc', 'freelancers', String(newFreelancer.id), () => setDoc(doc(db, 'freelancers', String(newFreelancer.id)), newFreelancer)).catch(err => console.warn('addFreelancer error:', err));
+    addAuditLog('إضافة مصور فريلانسر', `تم تسجيل مصور فريلانسر جديد: ${newFreelancer.name}`, '👤');
+    return newFreelancer;
+  }, [addAuditLog, logFirestoreOp]);
+
+  const updateFreelancer = useCallback((freelancerId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = freelancers.find(f => f.id === Number(freelancerId));
+    if (target) {
+      const merged = { ...target, ...sanitizedFields };
+      logFirestoreOp('setDoc', 'freelancers', String(freelancerId), () => setDoc(doc(db, 'freelancers', String(freelancerId)), merged)).catch(err => console.warn('updateFreelancer error:', err));
+    }
+  }, [freelancers, logFirestoreOp]);
+
+  // Equipment actions
+  const updateEquipment = useCallback((equipmentId, updatedFields) => {
+    const target = equipment.find(e => e.id === Number(equipmentId));
+    if (target) {
+      const merged = { ...target, ...updatedFields };
+      logFirestoreOp('setDoc', 'equipment', String(equipmentId), () => setDoc(doc(db, 'equipment', String(equipmentId)), merged)).catch(err => console.warn('updateEquipment error:', err));
+    }
+  }, [equipment, logFirestoreOp]);
+
+  // Team CRUD
+  const addTeamMember = useCallback((memberData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(memberData);
+    const newMember = {
+      ...sanitizedData,
+      id: Date.now(),
+      tasksCompleted: 0,
+      completionRate: 100,
+      points: 100,
+      status: 'نشط'
+    };
+    logFirestoreOp('setDoc', 'team', String(newMember.id), () => setDoc(doc(db, 'team', String(newMember.id)), newMember)).catch(err => console.warn('addTeamMember error:', err));
+    addAuditLog('إضافة موظف', `تم إضافة موظف جديد: ${newMember.name}`, '👥');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const updateTeamMember = useCallback((memberId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = team.find(m => m.id === Number(memberId));
+    if (target) {
+      const merged = { ...target, ...sanitizedFields };
+      logFirestoreOp('setDoc', 'team', String(memberId), () => setDoc(doc(db, 'team', String(memberId)), merged)).catch(err => console.warn('updateTeamMember error:', err));
+      addAuditLog('تحديث بيانات موظف', `تم تحديث بيانات الموظف #${memberId}`, '✏️');
+    }
+  }, [addAuditLog, team, logFirestoreOp]);
+
+  const deleteTeamMember = useCallback((memberId) => {
+    logFirestoreOp('deleteDoc', 'team', String(memberId), () => deleteDoc(doc(db, 'team', String(memberId)))).catch(err => console.warn('deleteTeamMember error:', err));
+    addAuditLog('حذف موظف', `تم حذف الموظف #${memberId}`, '🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const toggleSupervisorRole = useCallback((memberId) => {
+    const target = team.find(m => m.id === Number(memberId));
+    if (target) {
+      const merged = { ...target, isSupervisor: !target.isSupervisor };
+      logFirestoreOp('setDoc', 'team', String(memberId), () => setDoc(doc(db, 'team', String(memberId)), merged)).catch(err => console.warn('toggleSupervisorRole error:', err));
+      addAuditLog('تغيير صلاحيات الموظف', `تم تغيير صلاحيات الموظف #${memberId}`, '👑');
+    }
+  }, [addAuditLog, team, logFirestoreOp]);
+
+  // Companies CRUD
+  const addCompany = useCallback((companyData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(companyData);
+    const newCompany = {
+      id: Date.now(),
+      totalRevenue: 0,
+      projectsCount: 0,
+      logo: '🏢',
+      ...sanitizedData
+    };
+    logFirestoreOp('setDoc', 'companies', String(newCompany.id), () => setDoc(doc(db, 'companies', String(newCompany.id)), newCompany))
+      .catch(err => console.warn('addCompany error:', err));
+    addAuditLog('إضافة شركة', `تم إضافة شركة جديدة: ${newCompany.name}`, '🏢');
+    showCelebration('تم إضافة الشركة بنجاح! 🏢');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const deleteCompany = useCallback((companyId) => {
+    logFirestoreOp('deleteDoc', 'companies', String(companyId), () => deleteDoc(doc(db, 'companies', String(companyId))))
+      .catch(err => console.warn('deleteCompany error:', err));
+    addAuditLog('حذف شركة', `تم حذف الشركة #${companyId}`, '🗑️');
+    showCelebration('تم حذف الشركة بنجاح! 🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  // Contacts CRUD
+  const addContact = useCallback((contactData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(contactData);
+    const newContact = {
+      id: contactData.id || Date.now(),
+      name: (sanitizedData.name || '').trim(),
+      phone: (sanitizedData.phone || '').trim(),
+      role: sanitizedData.role || sanitizedData.type || 'جهة اتصال عامة',
+      type: sanitizedData.type || 'contact',
+      email: (sanitizedData.email || '').trim(),
+      notes: (sanitizedData.notes || '').trim(),
+      createdAt: new Date().toISOString()
+    };
+
+    setContacts(prev => [newContact, ...(prev || [])]);
+
+    logFirestoreOp('setDoc', 'contacts', String(newContact.id), () =>
+      setDoc(doc(db, 'contacts', String(newContact.id)), newContact)
+    ).catch(err => console.warn('addContact error:', err));
+
+    addAuditLog('إضافة جهة اتصال', `تم إضافة جهة اتصال جديدة: ${newContact.name}`, '👤');
+    showCelebration('تم حفظ جهة الاتصال بنجاح! 👤');
+    return newContact;
+  }, [addAuditLog, logFirestoreOp]);
+
+  const updateContact = useCallback((contactId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    setContacts(prev => prev.map(c => (c.id === Number(contactId) || String(c.id) === String(contactId)) ? { ...c, ...sanitizedFields } : c));
+
+    logFirestoreOp('setDoc', 'contacts', String(contactId), () =>
+      setDoc(doc(db, 'contacts', String(contactId)), sanitizedFields, { merge: true })
+    ).catch(err => console.warn('updateContact error:', err));
+
+    addAuditLog('تحديث جهة اتصال', `تم تحديث بيانات جهة الاتصال #${contactId}`, '✏️');
+    showCelebration('تم تحديث جهة الاتصال بنجاح! ✏️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const deleteContact = useCallback((contactId) => {
+    setContacts(prev => prev.filter(c => c.id !== Number(contactId) && String(c.id) !== String(contactId)));
+
+    logFirestoreOp('deleteDoc', 'contacts', String(contactId), () =>
+      deleteDoc(doc(db, 'contacts', String(contactId)))
+    ).catch(err => console.warn('deleteContact error:', err));
+
+    addAuditLog('حذف جهة اتصال', `تم حذف جهة الاتصال #${contactId}`, '🗑️');
+    showCelebration('تم حذف جهة الاتصال بنجاح! 🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  // Unified Directory: combines direct contacts + freelancers + clients + companies + team
+  const allContacts = React.useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    // 1. Direct contacts (highest priority)
+    (contacts || []).forEach(c => {
+      if (!c) return;
+      const cleanPhone = (c.phone || '').trim().replace(/[^0-9]/g, '');
+      const cleanName = (c.name || '').trim().toLowerCase();
+      const key = cleanPhone || cleanName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          ...c,
+          role: c.role || c.type || 'جهة اتصال',
+          type: c.type || 'contact',
+          source: 'contacts'
+        });
+      }
+    });
+
+    // 2. Freelancers
+    (freelancers || []).forEach(f => {
+      if (!f) return;
+      const cleanPhone = (f.phone || '').trim().replace(/[^0-9]/g, '');
+      const cleanName = (f.name || '').trim().toLowerCase();
+      const key = cleanPhone || cleanName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: f.id,
+          name: f.name,
+          phone: f.phone || '',
+          role: 'مصور / فريلانسر',
+          type: 'freelancer',
+          email: f.email || '',
+          source: 'freelancers'
+        });
+      }
+    });
+
+    // 3. Clients
+    (clients || []).forEach(cl => {
+      if (!cl) return;
+      const cleanPhone = (cl.phone || '').trim().replace(/[^0-9]/g, '');
+      const cleanName = (cl.name || '').trim().toLowerCase();
+      const key = cleanPhone || cleanName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: cl.id,
+          name: cl.name,
+          phone: cl.phone || '',
+          role: 'عميل',
+          type: 'client',
+          email: cl.email || '',
+          source: 'clients'
+        });
+      }
+    });
+
+    // 4. Companies
+    (companies || []).forEach(co => {
+      if (!co) return;
+      const phone = co.phone || co.contactPhone || '';
+      const cleanPhone = phone.trim().replace(/[^0-9]/g, '');
+      const cleanName = (co.name || '').trim().toLowerCase();
+      const key = cleanPhone || cleanName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: co.id,
+          name: co.name,
+          phone,
+          role: 'شركة',
+          type: 'company',
+          email: co.email || '',
+          source: 'companies'
+        });
+      }
+    });
+
+    // 5. Team
+    (team || []).forEach(t => {
+      if (!t) return;
+      const cleanPhone = (t.phone || '').trim().replace(/[^0-9]/g, '');
+      const cleanName = (t.name || '').trim().toLowerCase();
+      const key = cleanPhone || cleanName;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: t.id,
+          name: t.name,
+          phone: t.phone || '',
+          role: t.role || 'عضو فريق',
+          type: 'team',
+          email: t.email || '',
+          source: 'team'
+        });
+      }
+    });
+
+    return list;
+  }, [contacts, freelancers, clients, companies, team]);
+
+  // Projects CRUD
+  const addProject = useCallback((projectData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(projectData);
+    const newProject = {
+      id: Date.now(),
+      progress: 0,
+      revenue: 0,
+      expenses: 0,
+      profit: 0,
+      status: 'نشط',
+      ...sanitizedData
+    };
+    logFirestoreOp('setDoc', 'projects', String(newProject.id), () => setDoc(doc(db, 'projects', String(newProject.id)), newProject))
+      .catch(err => console.warn('addProject error:', err));
+    addAuditLog('إضافة مشروع', `تم إضافة مشروع جديد: ${newProject.name}`, '📁');
+    showCelebration('تم إضافة المشروع بنجاح! 📁');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const deleteProject = useCallback((projectId) => {
+    logFirestoreOp('deleteDoc', 'projects', String(projectId), () => deleteDoc(doc(db, 'projects', String(projectId))))
+      .catch(err => console.warn('deleteProject error:', err));
+    addAuditLog('حذف مشروع', `تم حذف المشروع #${projectId}`, '🗑️');
+    showCelebration('تم حذف المشروع بنجاح! 🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const deleteContract = useCallback((contractId) => {
+    logFirestoreOp('deleteDoc', 'contracts', String(contractId), () => deleteDoc(doc(db, 'contracts', String(contractId))))
+      .catch(err => console.warn('deleteContract error:', err));
+    addAuditLog('حذف عقد', `تم حذف العقد #${contractId}`, '🗑️');
+    showCelebration('تم حذف العقد بنجاح! 🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const deleteQuotation = useCallback((quoteId) => {
+    logFirestoreOp('deleteDoc', 'quotations', String(quoteId), () => deleteDoc(doc(db, 'quotations', String(quoteId))))
+      .catch(err => console.warn('deleteQuotation error:', err));
+    addAuditLog('حذف عرض سعر', `تم حذف عرض السعر #${quoteId}`, '🗑️');
+    showCelebration('تم حذف عرض السعر بنجاح! 🗑️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  // Contracts CRUD
+  const addContract = useCallback((contractData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(contractData);
+    const newId = 700 + contracts.length + 1;
+    const newContract = {
+      id: newId,
+      contractNumber: `CTR-2026-${String(newId).padStart(3, '0')}`,
+      status: 'بانتظار التوقيع',
+      signedByClient: '',
+      signedAt: '',
+      signatureData: '',
+      ...sanitizedData
+    };
+    logFirestoreOp('setDoc', 'contracts', String(newContract.id), () => setDoc(doc(db, 'contracts', String(newContract.id)), newContract)).catch(err => console.warn('addContract error:', err));
+    addAuditLog('إنشاء عقد', `إنشاء العقد #${newContract.contractNumber} للحجز ${contractData.bookingTitle}`, '📄');
+    addNotification('عقد جديد 📄', `تم إنشاء عقد جديد للحجز ${contractData.bookingTitle}`, 'booking');
+  }, [contracts, addAuditLog, addNotification, logFirestoreOp]);
+
+  const signContract = useCallback((contractId, signatureData, signedByName) => {
+    const sanitizedName = toEnglishDigits(signedByName);
+    const target = contracts.find(c => c.id === Number(contractId));
+    if (target) {
+      const merged = {
+        ...target,
+        status: 'تم التوقيع',
+        signedByClient: sanitizedName,
+        signedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        signatureData
+      };
+      logFirestoreOp('setDoc', 'contracts', String(contractId), () => setDoc(doc(db, 'contracts', String(contractId)), merged)).catch(err => console.warn('signContract error:', err));
+      addAuditLog('توقيع عقد', `تم توقيع العقد #${target.contractNumber} بواسطة ${sanitizedName}`, '✍️');
+      addNotification('توقيع عقد ✍️', `تم توقيع العقد #${target.contractNumber} بنجاح!`, 'booking');
+    }
+  }, [contracts, addAuditLog, addNotification, logFirestoreOp]);
+
+  // Invoices CRUD
+  const addInvoice = useCallback((invoiceData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(invoiceData);
+    const newInvoice = {
+      ...sanitizedData,
+      id: Date.now(),
+      invoiceNumber: `INV-2026-${Math.floor(Math.random() * 900) + 100}`
+    };
+    logFirestoreOp('setDoc', 'invoices', String(newInvoice.id), () => setDoc(doc(db, 'invoices', String(newInvoice.id)), newInvoice)).catch(err => console.warn('addInvoice error:', err));
+  }, [logFirestoreOp]);
+
+  const updateInvoice = useCallback((invoiceId, updatedFields) => {
+    const sanitizedFields = sanitizeObjectToEnglishDigits(updatedFields);
+    const target = invoices.find(inv => inv.id === Number(invoiceId));
+    if (target) {
+      const merged = { ...target, ...sanitizedFields };
+      logFirestoreOp('setDoc', 'invoices', String(invoiceId), () => setDoc(doc(db, 'invoices', String(invoiceId)), merged)).catch(err => console.warn('updateInvoice error:', err));
+    }
+  }, [invoices, logFirestoreOp]);
+
+  const cancelInvoice = useCallback((invoiceId) => {
+    const target = invoices.find(inv => inv.id === Number(invoiceId));
+    if (!target) return;
+    const updated = { ...target, status: 'ملغاة' };
+    logFirestoreOp('setDoc', 'invoices', String(invoiceId), () => setDoc(doc(db, 'invoices', String(invoiceId)), updated))
+      .catch(err => console.error(`Firestore update error [collection: invoices, doc: ${invoiceId}]:`, err));
+    addAuditLog('إلغاء فاتورة', `تم تحويل الفاتورة رقم ${target.invoiceNumber} إلى ملغاة`, '⚠️');
+  }, [invoices, logFirestoreOp, addAuditLog]);
+
+  const deleteInvoice = useCallback((invoiceId) => {
+    const target = invoices.find(inv => inv.id === Number(invoiceId));
+    if (!target) return;
+    logFirestoreOp('deleteDoc', 'invoices', String(invoiceId), () => deleteDoc(doc(db, 'invoices', String(invoiceId))))
+      .catch(err => console.error(`Firestore delete error [collection: invoices, doc: ${invoiceId}]:`, err));
+    addAuditLog('حذف فاتورة', `تم حذف الفاتورة رقم ${target.invoiceNumber}`, '🗑️');
+  }, [invoices, logFirestoreOp, addAuditLog]);
+
+  const addPayment = useCallback((paymentData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(paymentData);
+    const newPayment = {
+      ...sanitizedData,
+      id: Date.now()
+    };
+    logFirestoreOp('setDoc', 'payments', String(newPayment.id), () => setDoc(doc(db, 'payments', String(newPayment.id)), newPayment)).catch(err => console.warn('addPayment error:', err));
+    addAuditLog('تسجيل دفعة', `تم تسجيل دفعة بقيمة ${sanitizedData.amount} ريال`, '💰');
+    showCelebration('تم تسجيل الدفعة المالية بنجاح! 💰');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const cancelPayment = useCallback((paymentId) => {
+    const target = payments.find(p => p.id === Number(paymentId));
+    if (!target) return;
+    const updatedPayment = { ...target, status: 'ملغاة' };
+    logFirestoreOp('setDoc', 'payments', String(paymentId), () => setDoc(doc(db, 'payments', String(paymentId)), updatedPayment))
+      .catch(err => console.error(`Firestore update error [collection: payments, doc: ${paymentId}]:`, err));
+    
+    // Update the associated invoice paid amount
+    const relatedInvoice = invoices.find(inv => inv.invoiceNumber === target.invoiceNumber);
+    if (relatedInvoice) {
+      const newPaid = Math.max(0, (Number(relatedInvoice.paid) || 0) - (Number(target.amount) || 0));
+      const isFullyPaid = newPaid >= Number(relatedInvoice.total);
+      const isPartiallyPaid = newPaid > 0 && newPaid < Number(relatedInvoice.total);
+      
+      const updatedFields = {
+        paid: newPaid,
+        status: isFullyPaid ? 'مدفوعة' : (isPartiallyPaid ? 'جزئي' : 'غير مدفوعة')
+      };
+      logFirestoreOp('setDoc', 'invoices', String(relatedInvoice.id), () => setDoc(doc(db, 'invoices', String(relatedInvoice.id)), { ...relatedInvoice, ...updatedFields }))
+        .catch(err => console.error(`Firestore update error [collection: invoices, doc: ${relatedInvoice.id}]:`, err));
+    }
+    addAuditLog('إلغاء/عكس دفعة مالية', `تم إلغاء/عكس الدفعة بقيمة ${target.amount} ريال للفاتورة ${target.invoiceNumber}`, '⚠️');
+  }, [payments, invoices, logFirestoreOp, addAuditLog]);
+
+  const addExpense = useCallback((expenseData) => {
+    const sanitizedData = sanitizeObjectToEnglishDigits(expenseData);
+    const newExpense = {
+      ...sanitizedData,
+      id: Date.now()
+    };
+    logFirestoreOp('setDoc', 'expenses', String(newExpense.id), () => setDoc(doc(db, 'expenses', String(newExpense.id)), newExpense)).catch(err => console.warn('addExpense error:', err));
+    addAuditLog('تسجيل مصروفات', `تم تسجيل مصروف بقيمة ${sanitizedData.amount} ريال`, '💸');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const updateExpense = useCallback((expenseId, updatedFields) => {
+    const target = expenses.find(ex => ex.id === Number(expenseId));
+    if (!target) return;
+    const merged = { ...target, ...updatedFields };
+    logFirestoreOp('setDoc', 'expenses', String(expenseId), () => setDoc(doc(db, 'expenses', String(expenseId)), merged))
+      .catch(err => console.error(`Firestore update error [collection: expenses, doc: ${expenseId}]:`, err));
+    addAuditLog('تعديل مصروف', `تم تعديل المصروف #${expenseId}`, '💸');
+  }, [expenses, logFirestoreOp, addAuditLog]);
+
+  const deleteExpense = useCallback((expenseId) => {
+    const target = expenses.find(ex => ex.id === Number(expenseId));
+    if (!target) return;
+    logFirestoreOp('deleteDoc', 'expenses', String(expenseId), () => deleteDoc(doc(db, 'expenses', String(expenseId))))
+      .catch(err => console.error(`Firestore delete error [collection: expenses, doc: ${expenseId}]:`, err));
+    addAuditLog('حذف مصروف', `تم إزالة المصروف: ${target.title} بقيمة ${target.amount} ريال`, '🗑️');
+  }, [expenses, logFirestoreOp, addAuditLog]);
+
+  const cancelExpense = useCallback((expenseId) => {
+    const target = expenses.find(ex => ex.id === Number(expenseId));
+    if (!target) return;
+    const updated = { ...target, status: 'ملغاة' };
+    logFirestoreOp('setDoc', 'expenses', String(expenseId), () => setDoc(doc(db, 'expenses', String(expenseId)), updated))
+      .catch(err => console.error(`Firestore update error [collection: expenses, doc: ${expenseId}]:`, err));
+    addAuditLog('إلغاء مصروف', `تم إلغاء المصروف #${expenseId} (${target.title}) بقيمة ${target.amount} ريال`, '⚠️');
+  }, [expenses, logFirestoreOp, addAuditLog]);
+
+  const updateSettings = useCallback((newSettings) => {
+    const sanitizedSettings = sanitizeObjectToEnglishDigits(newSettings);
+    logFirestoreOp('setDoc', 'settings', 'defaultConfig', () => setDoc(doc(db, 'settings', 'defaultConfig'), sanitizedSettings)).catch(err => console.warn('updateSettings error:', err));
+    addAuditLog('تعديل الإعدادات', 'تم تحديث إعدادات النظام والهوية البصرية', '⚙️');
+  }, [addAuditLog, logFirestoreOp]);
+
+  const markNotificationAsRead = useCallback((notificationId) => {
+    const target = (notifications || []).find(n => n.id === Number(notificationId));
+    if (target) {
+      setNotifications(prev => prev.map(n => n.id === Number(notificationId) ? { ...n, read: true } : n));
+      logFirestoreOp('setDoc', 'notifications', String(notificationId), () => setDoc(doc(db, 'notifications', String(notificationId)), { ...target, read: true })).catch(err => console.warn('markNotificationAsRead error:', err));
+    }
+  }, [notifications, logFirestoreOp]);
+
+  const handleNotificationClick = useCallback((notif) => {
+    if (!notif) return;
+    markNotificationAsRead(notif.id);
+    setActiveOverlay('NONE');
+
+    if (notif.targetTab) {
+      setActiveTab(notif.targetTab);
+      if (notif.targetTab === 'bookings' && notif.targetId) {
+        const found = bookings.find(b => String(b.id) === String(notif.targetId) || b.bookingNumber === notif.targetId);
+        if (found) {
+          setSelectedBooking(found);
+          setIsBookingDetailOpen(true);
+        }
+      }
+      return;
+    }
+
+    const notifTitle = notif.title || '';
+    const targetType = notif.entityType || (notif.type === 'booking' || notifTitle.includes('حجز') ? 'booking' : notif.type === 'task' || notifTitle.includes('مهمة') ? 'task' : notif.type === 'financial' || notif.type === 'invoice' || notifTitle.includes('فاتورة') ? 'financials' : notif.type === 'equipment' || notifTitle.includes('معدة') ? 'equipment' : 'dashboard');
+    const targetId = notif.entityId || notif.bookingId || notif.targetId;
+
+    if (targetType === 'booking') {
+      setActiveTab('bookings');
+      if (targetId) {
+        const found = bookings.find(b => String(b.id) === String(targetId) || b.bookingNumber === targetId);
+        if (found) {
+          setSelectedBooking(found);
+          setIsBookingDetailOpen(true);
+        }
+      }
+    } else if (targetType === 'task') {
+      setActiveTab('tasks');
+    } else if (targetType === 'financials' || targetType === 'invoice') {
+      setActiveTab('financials');
+    } else if (targetType === 'equipment') {
+      setActiveTab('equipment');
+    } else {
+      setActiveTab('dashboard');
+    }
+  }, [bookings, markNotificationAsRead]);
+
+  const changeUserPassword = useCallback((currentPass, newPass) => {
+    if (!currentUser) return { success: false, error: 'لم يتم تسجيل الدخول بعد' };
+    
+    // Check current password if set on user
+    if (currentUser.password && currentUser.password !== currentPass) {
+      return { success: false, error: 'كلمة المرور الحالية غير مطابقة' };
+    }
+    if (!newPass || newPass.length < 6) {
+      return { success: false, error: 'يجب أن تكون كلمة المرور 6 خانات على الأقل' };
+    }
+
+    const updatedUser = { ...currentUser, password: newPass };
+    setCurrentUser(updatedUser);
+    try {
+      localStorage.setItem('star_media_current_user', JSON.stringify(updatedUser));
+    } catch (_) {}
+
+    if (currentUser.id) {
+      logFirestoreOp('setDoc', 'team', String(currentUser.id), () => 
+        setDoc(doc(db, 'team', String(currentUser.id)), updatedUser, { merge: true })
+      ).catch(() => {});
+
+      logFirestoreOp('setDoc', 'users', String(currentUser.id), () => 
+        setDoc(doc(db, 'users', String(currentUser.id)), updatedUser, { merge: true })
+      ).catch(() => {});
+    }
+
+    // Invalidate sessions on other devices for security
+    const currentDevId = getDeviceId();
+    const others = (devices || []).filter(d => String(d.id) !== String(currentDevId) && d.status !== 'terminated');
+    others.forEach(dev => {
+      logFirestoreOp('setDoc', 'devices', String(dev.id), () => 
+        setDoc(doc(db, 'devices', String(dev.id)), { 
+          status: 'terminated', 
+          terminatedAt: new Date().toISOString() 
+        }, { merge: true })
+      ).catch(() => {});
+    });
+
+    addAuditLog('تغيير كلمة المرور', `تم تحديث كلمة المرور للمستخدم (${currentUser.name}) وإنهاء الجلسات على الأجهزة الأخرى بنجاح`, '🔒');
+    addNotification('أمان الحساب 🔒', 'تم تغيير كلمة المرور وتأمين حسابك وإنهاء الجلسات على الأجهزة الأخرى', 'system');
+    showCelebration('تم تغيير وتأكيد كلمة المرور وتأمين حسابك بنجاح! 🔒✨');
+    return { success: true };
+  }, [currentUser, devices, addAuditLog, addNotification, logFirestoreOp]);
+
+  const checkBookingConflicts = (date, startTime, endTime, assignedTeam = [], assignedEquipment = [], currentBookingId = null, endDate = null) => {
+    const conflicts = { team: [], equipment: [] };
+    if (!date || !startTime || !endTime) return conflicts;
+
+    const toMinutes = (timeStr, isEnd = false) => {
+      if (!timeStr) return 0;
+      if (timeStr === 'صباحًا') {
+        return isEnd ? 720 : 480;
+      }
+      if (timeStr === 'مساءً') {
+        return isEnd ? 1020 : 780;
+      }
+      const time24 = parseTime12hTo24h(timeStr);
+      const [h, m] = time24.split(':').map(Number);
+      return h * 60 + (m || 0);
+    };
+
+    const newStart = toMinutes(startTime, false);
+    const newEnd = toMinutes(endTime, true);
+    const startDay = date;
+    const endDay = endDate || date;
+
+    bookings.forEach(b => {
+      if (b.id === Number(currentBookingId)) return;
+      
+      const bStartDay = b.startDate || b.date;
+      const bEndDay = b.endDate || b.date || bStartDay;
+
+      const hasDateOverlap = (startDay <= bEndDay && endDay >= bStartDay);
+      if (!hasDateOverlap) return;
+
+      const bStart = toMinutes(b.startTime || '00:00', false);
+      const bEnd = toMinutes(b.endTime || '23:59', true);
+
+      const hasTimeOverlap = (newStart < bEnd && newEnd > bStart);
+
+      if (hasTimeOverlap) {
+        const bTeam = b.teamMemberIds || b.teamAssigned || [];
+        bTeam.forEach(tId => {
+          if (assignedTeam.includes(tId)) {
+            const member = team.find(t => t.id === tId);
+            if (member && !conflicts.team.some(item => item.member.id === tId)) {
+              conflicts.team.push({ member, booking: b });
+            }
+          }
+        });
+
+        const bEquip = b.equipmentAssigned || [];
+        bEquip.forEach(eId => {
+          if (assignedEquipment.includes(eId)) {
+            const eq = equipment.find(e => e.id === eId);
+            if (eq && !conflicts.equipment.some(item => item.item.id === eId)) {
+              conflicts.equipment.push({ item: eq, booking: b });
+            }
+          }
+        });
+      }
+    });
+
+    return conflicts;
+  };
+
+  const checkTravelTimeBuffer = (date, location, assignedTeam = [], currentBookingId = null) => {
+    const warnings = [];
+    if (!date || !location || !assignedTeam || assignedTeam.length === 0) return warnings;
+
+    bookings.forEach(b => {
+      if (b.id === Number(currentBookingId) || b.status === 'ملغي') return;
+      
+      const bDate = b.startDate || b.date;
+      if (bDate === date && b.location !== location) {
+        const bTeam = b.teamAssigned || b.teamMemberIds || [];
+        bTeam.forEach(tId => {
+          if (assignedTeam.includes(tId)) {
+            const member = team.find(t => t.id === tId);
+            if (member && !warnings.some(w => w.memberId === tId)) {
+              warnings.push({
+                memberId: tId,
+                memberName: member.name,
+                otherBooking: b
+              });
+            }
+          }
+        });
+      }
+    });
+    return warnings;
+  };
+
+  const addToWaitlist = useCallback((item) => {
+    const newItem = {
+      id: Date.now(),
+      ...item
+    };
+    setDoc(doc(db, 'waitlist', String(newItem.id)), newItem);
+    addAuditLog('إضافة لقائمة الانتظار', `تم إضافة ${newItem.clientName} إلى قائمة الانتظار لتاريخ ${newItem.date}`, '⏳');
+    showCelebration('تمت الإضافة لقائمة الانتظار بنجاح! ⏳');
+  }, [addAuditLog]);
+
+  const removeFromWaitlist = useCallback((waitlistId) => {
+    deleteDoc(doc(db, 'waitlist', String(waitlistId)));
+    addAuditLog('حذف من قائمة الانتظار', `إزالة طلب من قائمة الانتظار #${waitlistId}`, '🗑️');
+  }, [addAuditLog]);
+
+  const addQuotation = useCallback((quoteData) => {
+    const newItem = {
+      id: Date.now(),
+      quoteNumber: `QT-2026-${Math.floor(Math.random() * 900) + 100}`,
+      status: 'بانتظار العميل',
+      ...quoteData
+    };
+    setDoc(doc(db, 'quotations', String(newItem.id)), newItem);
+    addAuditLog('إنشاء عرض سعر', `تم إنشاء عرض سعر جديد لـ ${quoteData.clientName}`, '📄');
+    showCelebration('تم إنشاء عرض السعر بنجاح! 📄');
+    return newItem;
+  }, [addAuditLog]);
+
+  const convertQuoteToBooking = useCallback((quoteId) => {
+    const quote = quotations.find(q => q.id === Number(quoteId));
+    if (!quote) return;
+
+    setDoc(doc(db, 'quotations', String(quoteId)), { ...quote, status: 'مقبول' });
+
+    const booking = addBooking({
+      clientName: quote.clientName,
+      title: quote.description || `حجز من عرض السعر ${quote.quoteNumber}`,
+      date: quote.date || new Date().toISOString().substring(0, 10),
+      totalPrice: quote.totalPrice,
+      status: 'مؤكد',
+      location: quote.location || 'موقع استوديو ستار ميديا',
+      bookingType: 'client'
+    });
+
+    addAuditLog('تحويل عرض سعر لحجز', `تم تحويل عرض السعر ${quote.quoteNumber} إلى حجز مؤكد`, '🔄');
+    showCelebration('تم قبول وتحويل عرض السعر لحجز مؤكد بنجاح! 🎊');
+    return booking;
+  }, [quotations, addBooking, addAuditLog]);
+
+  const markAllNotificationsAsRead = useCallback(() => {
+    notifications.forEach(n => {
+      if (!n.read) {
+        logFirestoreOp('setDoc', 'notifications', String(n.id), () => setDoc(doc(db, 'notifications', String(n.id)), { ...n, read: true })).catch(err => console.warn('markAllNotificationsAsRead error:', err));
+      }
+    });
+  }, [notifications, logFirestoreOp]);
+
+  const togglePrivacyMode = useCallback(() => {
+    setPrivacyMode(prev => {
+      const newVal = !prev;
+      addAuditLog('تغيير وضع الخصوصية', `تم ${newVal ? 'تفعيل' : 'تعطيل'} وضع الخصوصية وإخفاء البيانات الحساسة`, '🔒');
+      return newVal;
+    });
+  }, [addAuditLog]);
+
+  const toggleOfflineMode = useCallback(() => {
+    setIsOnline(prev => {
+      const newVal = !prev;
+      if (newVal) {
+        showCelebration('النظام متصل الآن بالإنترنت (Online) 🌐');
+      } else {
+        showCelebration('النظام يعمل الآن بدون اتصال (Offline) 📶');
+      }
+      return newVal;
+    });
+  }, []);
+
+  const syncOfflineData = useCallback(() => {
+    if (pendingOfflineActions.length === 0) {
+      showCelebration('لا توجد بيانات بانتظار المزامنة!');
+      return;
+    }
+    setPendingOfflineActions([]);
+    showCelebration('تمت مزامنة كافة البيانات المحلية بنجاح مع السيرفر وبدون تكرار! ⚡');
+    addAuditLog('مزامنة البيانات', 'تمت مزامنة العمليات المحلية غير المتصلة بنجاح', '⚡');
+  }, [pendingOfflineActions, addAuditLog]);
+
+  return (
+    <AppContext.Provider
+      value={{
+        activeTab,
+        setActiveTab,
+        activeOverlay,
+        setActiveOverlay,
+        currentUser,
+        setCurrentUser,
+        userRole,
+        setUserRole,
+        loginUser,
+        logoutUser,
+        searchQuery,
+        setSearchQuery,
+        celebrationToast,
+        setCelebrationToast,
+        showCelebration,
+        isLoadingBookings,
+        
+        team,
+        setTeam,
+        clients,
+        setClients,
+        companies,
+        setCompanies,
+        freelancers,
+        setFreelancers,
+        equipment,
+        setEquipment,
+        bookings,
+        setBookings,
+        projects,
+        setProjects,
+        tasks,
+        setTasks,
+        invoices,
+        setInvoices,
+        payments,
+        setPayments,
+        expenses,
+        setExpenses,
+        auditLogs,
+        setAuditLogs,
+        clearAuditLogs,
+        exportAuditLogs,
+        notifications,
+        setNotifications,
+        toggleNotificationRead,
+        deleteNotification,
+        clearAllNotifications,
+        devices,
+        setDevices,
+        logoutDevice,
+        logoutAllOtherDevices,
+        logoutAllDevices,
+        changeUserPassword,
+        settings,
+        setSettings,
+        contracts,
+        setContracts,
+        files,
+        setFiles,
+        customRoles,
+        setCustomRoles,
+
+        quotations,
+        setQuotations,
+        waitlist,
+        setWaitlist,
+        privacyMode,
+        togglePrivacyMode,
+        isOnline,
+        toggleOfflineMode,
+        pendingOfflineActions,
+        syncOfflineData,
+
+        selectedBooking,
+        setSelectedBooking,
+        selectedDateForBooking,
+        setSelectedDateForBooking,
+        openBookingFormWithDate,
+        editingBooking,
+        setEditingBooking,
+        openBookingForm,
+        
+        isSearchModalOpen,
+        setIsSearchModalOpen,
+        isBookingDetailOpen,
+        setIsBookingDetailOpen,
+        isBookingFormOpen,
+        setIsBookingFormOpen,
+        isPaymentModalOpen,
+        setIsPaymentModalOpen,
+
+        // CRUD Operations
+        addBooking,
+        updateBooking,
+        deleteBooking,
+        addTask,
+        updateTask,
+        deleteTask,
+        completeTask,
+        addClient,
+        updateClient,
+        deleteClient,
+        addFreelancer,
+        updateFreelancer,
+        contacts,
+        setContacts,
+        addContact,
+        updateContact,
+        deleteContact,
+        allContacts,
+        updateEquipment,
+        addInvoice,
+        updateInvoice,
+        cancelInvoice,
+        deleteInvoice,
+        addPayment,
+        cancelPayment,
+        addExpense,
+        updateExpense,
+        deleteExpense,
+        cancelExpense,
+        updateSettings,
+        markNotificationAsRead,
+        addAuditLog,
+        handleNotificationClick,
+        markAllNotificationsAsRead,
+        checkBookingConflicts,
+        checkTravelTimeBuffer,
+        addToWaitlist,
+        removeFromWaitlist,
+        addQuotation,
+        convertQuoteToBooking,
+        addNotification,
+        checkInLocation,
+        updateTaskStatus,
+        updateUserProfile,
+        addFile,
+        deleteFile,
+        addTeamMember,
+        updateTeamMember,
+        deleteTeamMember,
+        toggleSupervisorRole,
+        addContract,
+        signContract,
+        addCompany,
+        deleteCompany,
+        addProject,
+        deleteProject,
+        deleteContract,
+        deleteQuotation
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};
