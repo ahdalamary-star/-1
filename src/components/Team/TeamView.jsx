@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import * as Icons from 'lucide-react';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
+import { isContactPickerSupported, pickDeviceContact, openDeviceAddContact, openOfficialWhatsApp } from '../../utils/deviceContacts';
+import { DeviceContactsFallbackModal } from '../Common/DeviceContactsFallbackModal';
 
 export const TeamView = () => {
   const { team, addTeamMember, updateTeamMember, deleteTeamMember, toggleSupervisorRole, userRole, bookings } = useApp();
@@ -9,6 +11,39 @@ export const TeamView = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [contactPickerError, setContactPickerError] = useState('');
+  const [isContactFallbackOpen, setIsContactFallbackOpen] = useState(false);
+  const [contactTargetForm, setContactTargetForm] = useState('add');
+
+  const handlePickMemberContact = async (formType = 'add') => {
+    setContactPickerError('');
+    setContactTargetForm(formType);
+    if (isContactPickerSupported()) {
+      const res = await pickDeviceContact();
+      if (res.success && res.contact) {
+        if (formType === 'add') {
+          setMemberForm(prev => ({
+            ...prev,
+            name: res.contact.name || prev.name,
+            phone: res.contact.phone || prev.phone
+          }));
+        } else {
+          setEditForm(prev => ({
+            ...prev,
+            name: res.contact.name || prev.name,
+            phone: res.contact.phone || prev.phone
+          }));
+        }
+      } else if (res.permissionDenied) {
+        setContactPickerError(res.error || 'لم يتم السماح بالوصول إلى جهات الاتصال. يمكنك السماح بالوصول من إعدادات الجهاز ثم المحاولة مرة أخرى.');
+      } else if (!res.cancelled) {
+        setIsContactFallbackOpen(true);
+      }
+    } else {
+      setIsContactFallbackOpen(true);
+    }
+  };
 
   const [visiblePasswords, setVisiblePasswords] = useState({});
   const [memberForm, setMemberForm] = useState({
@@ -300,16 +335,48 @@ export const TeamView = () => {
             </div>
             <form onSubmit={handleAddSubmit}>
               <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {contactPickerError && (
+                  <div style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#f87171', fontSize: '0.76rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>{contactPickerError}</span>
+                    <button type="button" onClick={() => setContactPickerError('')} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>&times;</button>
+                  </div>
+                )}
                 <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label className="form-label" style={{ margin: 0 }}>اسم الموظف الثلاثي *</label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    required
-                    placeholder="مثال: خالد العتيبي"
-                    value={memberForm.name}
-                    onChange={e => setMemberForm({ ...memberForm, name: e.target.value })}
-                  />
+                  <label className="form-label" style={{ margin: 0 }}>اسم الموظف / المصور *</label>
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input
+                      type="text"
+                      className="form-control"
+                      required
+                      placeholder="مثال: خالد العتيبي"
+                      value={memberForm.name}
+                      onChange={e => setMemberForm({ ...memberForm, name: e.target.value })}
+                      style={{ paddingLeft: '40px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handlePickMemberContact('add')}
+                      title="اختيار من جهات اتصال الهاتف 👤"
+                      style={{
+                        position: 'absolute',
+                        left: '4px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                        border: '1px solid rgba(99, 102, 241, 0.25)',
+                        borderRadius: '6px',
+                        color: '#818cf8',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Icons.User size={15} />
+                    </button>
+                  </div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -370,12 +437,58 @@ export const TeamView = () => {
                     <label className="form-label">رقم الهاتف *</label>
                     <input
                       type="text"
-                      className="form-control"
+                      className="form-control en-digits"
                       required
                       placeholder="+966 50 123 4567"
                       value={memberForm.phone}
                       onChange={e => setMemberForm({ ...memberForm, phone: e.target.value })}
                     />
+                    {(memberForm.name.trim() || memberForm.phone.trim()) && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                        <button
+                          type="button"
+                          onClick={() => openDeviceAddContact(memberForm.name, memberForm.phone)}
+                          title="حفظ المصور في جهات اتصال الهاتف"
+                          style={{
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            border: '1px solid rgba(16, 185, 129, 0.25)',
+                            color: '#10b981',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Icons.UserPlus size={12} />
+                          <span>+ إضافة إلى جهات الاتصال</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openOfficialWhatsApp(memberForm.phone, memberForm.name)}
+                          title="فتح واتساب الرسمي"
+                          style={{
+                            backgroundColor: 'rgba(37, 211, 102, 0.1)',
+                            border: '1px solid rgba(37, 211, 102, 0.25)',
+                            color: '#25d366',
+                            borderRadius: '6px',
+                            padding: '2px 8px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px'
+                          }}
+                        >
+                          <Icons.MessageSquare size={12} />
+                          <span>إضافة من واتساب</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <label className="form-label">رابط الصورة الشخصية (Avatar)</label>
@@ -495,6 +608,31 @@ export const TeamView = () => {
       )}
       {/* Member Confirm Delete Modal */}
       {renderMemberDeleteModal && renderMemberDeleteModal()}
+
+      {/* Device Contacts Fallback Modal */}
+      <DeviceContactsFallbackModal
+        isOpen={isContactFallbackOpen}
+        targetType="photographer"
+        initialName={contactTargetForm === 'add' ? memberForm.name : (editingMember?.name || '')}
+        initialPhone={contactTargetForm === 'add' ? memberForm.phone : (editingMember?.phone || '')}
+        onClose={() => setIsContactFallbackOpen(false)}
+        onSelectContact={(c) => {
+          if (contactTargetForm === 'add') {
+            setMemberForm(prev => ({
+              ...prev,
+              name: c.name || prev.name,
+              phone: c.phone || prev.phone
+            }));
+          } else if (editingMember) {
+            setEditingMember(prev => ({
+              ...prev,
+              name: c.name || prev.name,
+              phone: c.phone || prev.phone
+            }));
+          }
+        }}
+        systemContacts={team}
+      />
     </div>
   );
 };

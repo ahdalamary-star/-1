@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import * as Icons from 'lucide-react';
 import { formatBookingNumber } from '../../utils/helpers';
 import { AttendanceTimePicker } from '../Common/AttendanceTimePicker';
+import { isContactPickerSupported, pickDeviceContact, openDeviceAddContact, openOfficialWhatsApp } from '../../utils/deviceContacts';
+import { DeviceContactsFallbackModal } from '../Common/DeviceContactsFallbackModal';
 
 export const BookingFormModal = () => {
   const {
@@ -29,14 +31,57 @@ export const BookingFormModal = () => {
   // بيانات العميل والمصور المباشرة
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
+  const [clientContactId, setClientContactId] = useState(null);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
 
   const [photographerName, setPhotographerName] = useState('');
   const [photographerPhone, setPhotographerPhone] = useState('');
+  const [photographerContactId, setPhotographerContactId] = useState(null);
   const [showPhotographerSuggestions, setShowPhotographerSuggestions] = useState(false);
+
+  // حالة الصلاحيات والنافذة البديلة لجهات الاتصال
+  const [permissionError, setPermissionError] = useState('');
+  const [fallbackModalState, setFallbackModalState] = useState({ isOpen: false, targetType: 'client' });
 
   const clientDropdownRef = useRef(null);
   const photographerDropdownRef = useRef(null);
+
+  // وظيفة جلب جهة الاتصال من الجهاز مباشرة أو فتح البديل
+  const handlePickContact = async (targetType) => {
+    setPermissionError('');
+    if (isContactPickerSupported()) {
+      const res = await pickDeviceContact();
+      if (res.success && res.contact) {
+        if (targetType === 'client') {
+          setClientName(res.contact.name);
+          if (res.contact.phone) setClientPhone(res.contact.phone);
+          setClientContactId(res.contact.contactId);
+        } else {
+          setPhotographerName(res.contact.name);
+          if (res.contact.phone) setPhotographerPhone(res.contact.phone);
+          setPhotographerContactId(res.contact.contactId);
+        }
+      } else if (res.permissionDenied) {
+        setPermissionError(res.error || 'لم يتم السماح بالوصول إلى جهات الاتصال. يمكنك السماح بالوصول من إعدادات الجهاز ثم المحاولة مرة أخرى.');
+      } else if (!res.cancelled) {
+        setFallbackModalState({ isOpen: true, targetType });
+      }
+    } else {
+      setFallbackModalState({ isOpen: true, targetType });
+    }
+  };
+
+  const handleFallbackContactSelected = (contact) => {
+    if (fallbackModalState.targetType === 'client') {
+      setClientName(contact.name);
+      if (contact.phone) setClientPhone(contact.phone);
+      setClientContactId(contact.contactId || null);
+    } else {
+      setPhotographerName(contact.name);
+      if (contact.phone) setPhotographerPhone(contact.phone);
+      setPhotographerContactId(contact.contactId || null);
+    }
+  };
 
   const [bookingDate, setBookingDate] = useState('');
   const [category, setCategory] = useState('زفاف');
@@ -138,11 +183,13 @@ export const BookingFormModal = () => {
         const cPhone = b.clientPhone || b.contactPhone || b.phone || '';
         setClientName(cName);
         setClientPhone(cPhone);
+        setClientContactId(b.clientContactId || null);
 
         const pName = b.freelancerName || b.assignedPhotographer || (bType === 'freelancer' ? (b.title?.split(' - ')[1] || b.title || '') : '');
         const pPhone = b.freelancerPhone || '';
         setPhotographerName(pName);
         setPhotographerPhone(pPhone);
+        setPhotographerContactId(b.photographerContactId || null);
         
         const dateVal = b.date || b.startDate || '';
         setBookingDate(dateVal);
@@ -200,8 +247,11 @@ export const BookingFormModal = () => {
 
         setClientName('');
         setClientPhone('');
+        setClientContactId(null);
         setPhotographerName('');
         setPhotographerPhone('');
+        setPhotographerContactId(null);
+        setPermissionError('');
 
         setTotalPrice('');
         setInvoiceNumber('');
@@ -281,10 +331,12 @@ export const BookingFormModal = () => {
 
     bookingData.clientName = clientName.trim();
     bookingData.clientPhone = clientPhone.trim();
+    bookingData.clientContactId = clientContactId || editingBooking?.clientContactId || null;
 
     bookingData.freelancerName = photographerName.trim();
     bookingData.freelancerPhone = photographerPhone.trim();
     bookingData.assignedPhotographer = photographerName.trim();
+    bookingData.photographerContactId = photographerContactId || editingBooking?.photographerContactId || null;
 
     bookingData.contactPhone = clientPhone || photographerPhone || '';
     bookingData.phone = clientPhone || photographerPhone || '';
@@ -525,24 +577,91 @@ export const BookingFormModal = () => {
             </div>
           </div>
 
+          {/* تنبيه الصلاحيات إن وجد */}
+          {permissionError && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: '#f87171',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                lineHeight: 1.4
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Icons.AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <span>{permissionError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPermissionError('')}
+                style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: '2px 4px' }}
+              >
+                <Icons.X size={14} />
+              </button>
+            </div>
+          )}
+
           {/* 2. الحقل 1: العميل */}
           <div ref={clientDropdownRef} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px', position: 'relative' }}>
-            <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)' }}>
-              {bookingType === 'company' ? 'اسم الشركة / العميل *' : 'اسم العميل *'}
-            </label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder={bookingType === 'company' ? 'اختر أو اكتب اسم الشركة...' : 'اختر أو اكتب اسم العميل...'}
-              value={clientName}
-              onChange={e => {
-                setClientName(e.target.value);
-                setShowClientSuggestions(true);
-              }}
-              onFocus={() => setShowClientSuggestions(true)}
-              style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
-            />
-            {showClientSuggestions && filteredClients.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)', margin: 0 }}>
+                {bookingType === 'company' ? 'اسم الشركة / العميل *' : 'اسم العميل *'}
+              </label>
+              {clientContactId && (
+                <span style={{ fontSize: '0.68rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <Icons.Check size={11} /> متصل بالهاتف
+                </span>
+              )}
+            </div>
+
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-control"
+                placeholder={bookingType === 'company' ? 'اختر أو اكتب اسم الشركة...' : 'اختر أو اكتب اسم العميل...'}
+                value={clientName}
+                onChange={e => {
+                  setClientName(e.target.value);
+                  setShowClientSuggestions(true);
+                }}
+                onFocus={() => setShowClientSuggestions(true)}
+                style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext', paddingLeft: '44px' }}
+              />
+              <button
+                type="button"
+                onClick={() => handlePickContact('client')}
+                title="اختيار من جهات اتصال الهاتف 👤"
+                style={{
+                  position: 'absolute',
+                  left: '6px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  borderRadius: '8px',
+                  color: '#818cf8',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Icons.User size={16} />
+              </button>
+            </div>
+
+            {showClientSuggestions && (
               <div style={{
                 position: 'absolute',
                 top: '72px',
@@ -553,7 +672,7 @@ export const BookingFormModal = () => {
                 borderRadius: '10px',
                 boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
                 zIndex: 100,
-                maxHeight: '180px',
+                maxHeight: '200px',
                 overflowY: 'auto'
               }}>
                 {filteredClients.map(c => (
@@ -562,6 +681,7 @@ export const BookingFormModal = () => {
                     onClick={() => {
                       setClientName(c.name);
                       if (c.phone) setClientPhone(c.phone);
+                      setClientContactId(c.id || null);
                       setShowClientSuggestions(false);
                     }}
                     style={{
@@ -580,8 +700,31 @@ export const BookingFormModal = () => {
                     {c.phone && <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', direction: 'ltr' }}>{c.phone}</span>}
                   </div>
                 ))}
+                <div
+                  onClick={() => {
+                    setShowClientSuggestions(false);
+                    openDeviceAddContact(clientName, clientPhone);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.76rem',
+                    color: 'var(--primary-color)',
+                    fontWeight: 800,
+                    backgroundColor: 'rgba(99, 102, 241, 0.05)'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.1)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.05)'}
+                >
+                  <Icons.UserPlus size={13} />
+                  <span>إضافة جهة اتصال في الهاتف</span>
+                </div>
               </div>
             )}
+
             <input
               type="text"
               className="form-control en-digits"
@@ -590,26 +733,108 @@ export const BookingFormModal = () => {
               onChange={e => setClientPhone(e.target.value)}
               style={{ height: '36px', borderRadius: '8px', fontSize: '0.82rem', textAlign: 'left', direction: 'ltr', marginTop: '2px' }}
             />
+
+            {(clientName.trim() || clientPhone.trim()) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => openDeviceAddContact(clientName, clientPhone)}
+                  title="حفظ العميل في جهات اتصال الهاتف"
+                  style={{
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    color: '#10b981',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Icons.UserPlus size={12} />
+                  <span>+ إضافة إلى جهات الاتصال</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openOfficialWhatsApp(clientPhone, clientName)}
+                  title="فتح واتساب الرسمي"
+                  style={{
+                    backgroundColor: 'rgba(37, 211, 102, 0.1)',
+                    border: '1px solid rgba(37, 211, 102, 0.25)',
+                    color: '#25d366',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Icons.MessageSquare size={12} />
+                  <span>إضافة من واتساب</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 3. الحقل 2: المصور */}
           <div ref={photographerDropdownRef} style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px', position: 'relative' }}>
-            <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)' }}>
-              المصور / الفريلانسر:
-            </label>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="اختر أو اكتب اسم المصور..."
-              value={photographerName}
-              onChange={e => {
-                setPhotographerName(e.target.value);
-                setShowPhotographerSuggestions(true);
-              }}
-              onFocus={() => setShowPhotographerSuggestions(true)}
-              style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
-            />
-            {showPhotographerSuggestions && filteredPhotographers.length > 0 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-muted)', margin: 0 }}>
+                المصور / الفريلانسر:
+              </label>
+              {photographerContactId && (
+                <span style={{ fontSize: '0.68rem', color: '#10b981', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <Icons.Check size={11} /> متصل بالهاتف
+                </span>
+              )}
+            </div>
+
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="اختر أو اكتب اسم المصور..."
+                value={photographerName}
+                onChange={e => {
+                  setPhotographerName(e.target.value);
+                  setShowPhotographerSuggestions(true);
+                }}
+                onFocus={() => setShowPhotographerSuggestions(true)}
+                style={{ height: '40px', borderRadius: '10px', fontSize: '0.86rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext', paddingLeft: '44px' }}
+              />
+              <button
+                type="button"
+                onClick={() => handlePickContact('photographer')}
+                title="اختيار من جهات اتصال الهاتف 👤"
+                style={{
+                  position: 'absolute',
+                  left: '6px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                  border: '1px solid rgba(99, 102, 241, 0.25)',
+                  borderRadius: '8px',
+                  color: '#818cf8',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Icons.User size={16} />
+              </button>
+            </div>
+
+            {showPhotographerSuggestions && (
               <div style={{
                 position: 'absolute',
                 top: '72px',
@@ -620,7 +845,7 @@ export const BookingFormModal = () => {
                 borderRadius: '10px',
                 boxShadow: '0 10px 20px rgba(0,0,0,0.2)',
                 zIndex: 100,
-                maxHeight: '180px',
+                maxHeight: '200px',
                 overflowY: 'auto'
               }}>
                 {filteredPhotographers.map((p, idx) => (
@@ -629,6 +854,7 @@ export const BookingFormModal = () => {
                     onClick={() => {
                       setPhotographerName(p.name);
                       if (p.phone) setPhotographerPhone(p.phone);
+                      setPhotographerContactId(p.id || null);
                       setShowPhotographerSuggestions(false);
                     }}
                     style={{
@@ -647,8 +873,31 @@ export const BookingFormModal = () => {
                     {p.phone && <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', direction: 'ltr' }}>{p.phone}</span>}
                   </div>
                 ))}
+                <div
+                  onClick={() => {
+                    setShowPhotographerSuggestions(false);
+                    openDeviceAddContact(photographerName, photographerPhone);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.76rem',
+                    color: 'var(--primary-color)',
+                    fontWeight: 800,
+                    backgroundColor: 'rgba(99, 102, 241, 0.05)'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.1)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(99, 102, 241, 0.05)'}
+                >
+                  <Icons.UserPlus size={13} />
+                  <span>إضافة جهة اتصال في الهاتف</span>
+                </div>
               </div>
             )}
+
             <input
               type="text"
               className="form-control en-digits"
@@ -657,6 +906,53 @@ export const BookingFormModal = () => {
               onChange={e => setPhotographerPhone(e.target.value)}
               style={{ height: '36px', borderRadius: '8px', fontSize: '0.82rem', textAlign: 'left', direction: 'ltr', marginTop: '2px' }}
             />
+
+            {(photographerName.trim() || photographerPhone.trim()) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                <button
+                  type="button"
+                  onClick={() => openDeviceAddContact(photographerName, photographerPhone)}
+                  title="حفظ المصور في جهات اتصال الهاتف"
+                  style={{
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    color: '#10b981',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Icons.UserPlus size={12} />
+                  <span>+ إضافة إلى جهات الاتصال</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openOfficialWhatsApp(photographerPhone, photographerName)}
+                  title="فتح واتساب الرسمي"
+                  style={{
+                    backgroundColor: 'rgba(37, 211, 102, 0.1)',
+                    border: '1px solid rgba(37, 211, 102, 0.25)',
+                    color: '#25d366',
+                    borderRadius: '6px',
+                    padding: '3px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Icons.MessageSquare size={12} />
+                  <span>إضافة من واتساب</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 4. الحقل 3: نوع الحجز */}
@@ -1173,6 +1469,17 @@ export const BookingFormModal = () => {
             <span>{isEditMode ? 'حفظ التعديلات 💾' : 'حفظ وتأكيد الحجز 💾'}</span>
           </button>
         </div>
+
+        {/* Device Contacts Fallback Modal for iPhone / Safari / Desktop */}
+        <DeviceContactsFallbackModal
+          isOpen={fallbackModalState.isOpen}
+          targetType={fallbackModalState.targetType}
+          initialName={fallbackModalState.targetType === 'client' ? clientName : photographerName}
+          initialPhone={fallbackModalState.targetType === 'client' ? clientPhone : photographerPhone}
+          onClose={() => setFallbackModalState({ isOpen: false, targetType: 'client' })}
+          onSelectContact={handleFallbackContactSelected}
+          systemContacts={fallbackModalState.targetType === 'client' ? clients : availablePhotographers}
+        />
 
       </div>
     </div>

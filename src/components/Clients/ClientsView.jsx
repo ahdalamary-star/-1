@@ -3,6 +3,8 @@ import { useApp } from '../../context/AppContext';
 import { formatCurrency, formatBookingNumber } from '../../utils/helpers';
 import * as Icons from 'lucide-react';
 import { ConfirmDeleteModal } from '../Common/ConfirmDeleteModal';
+import { isContactPickerSupported, pickDeviceContact, openDeviceAddContact, openOfficialWhatsApp } from '../../utils/deviceContacts';
+import { DeviceContactsFallbackModal } from '../Common/DeviceContactsFallbackModal';
 
 export const ClientsView = () => {
   const {
@@ -44,6 +46,29 @@ export const ClientsView = () => {
     email: '',
     notes: ''
   });
+
+  const [contactPickerError, setContactPickerError] = useState('');
+  const [isContactFallbackOpen, setIsContactFallbackOpen] = useState(false);
+
+  const handlePickClientContact = async () => {
+    setContactPickerError('');
+    if (isContactPickerSupported()) {
+      const res = await pickDeviceContact();
+      if (res.success && res.contact) {
+        setNewClient(prev => ({
+          ...prev,
+          name: res.contact.name || prev.name,
+          phone: res.contact.phone || prev.phone
+        }));
+      } else if (res.permissionDenied) {
+        setContactPickerError(res.error || 'لم يتم السماح بالوصول إلى جهات الاتصال. يمكنك السماح بالوصول من إعدادات الجهاز ثم المحاولة مرة أخرى.');
+      } else if (!res.cancelled) {
+        setIsContactFallbackOpen(true);
+      }
+    } else {
+      setIsContactFallbackOpen(true);
+    }
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClientProfile, setSelectedClientProfile] = useState(null);
@@ -1503,6 +1528,12 @@ export const ClientsView = () => {
               <button onClick={() => setIsAddClientOpen(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}><Icons.X size={18} /></button>
             </div>
             <form onSubmit={handleAddClientSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {contactPickerError && (
+                <div style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#f87171', fontSize: '0.76rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{contactPickerError}</span>
+                  <button type="button" onClick={() => setContactPickerError('')} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer' }}>&times;</button>
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800 }}>تصنيف العميل:</label>
                 <select className="form-control" value={newClient.type} onChange={e => setNewClient({ ...newClient, type: e.target.value })} style={{ height: '34px', fontSize: '0.8rem' }}>
@@ -1513,11 +1544,97 @@ export const ClientsView = () => {
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, margin: 0 }}>اسم العميل / الجهة *</label>
-                <input type="text" className="form-control" required value={newClient.name} onChange={e => setNewClient({ ...newClient, name: e.target.value })} style={{ height: '34px', fontSize: '0.8rem' }} />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    className="form-control"
+                    required
+                    value={newClient.name}
+                    onChange={e => setNewClient({ ...newClient, name: e.target.value })}
+                    style={{ height: '36px', fontSize: '0.82rem', paddingLeft: '40px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handlePickClientContact}
+                    title="اختيار من جهات اتصال الهاتف 👤"
+                    style={{
+                      position: 'absolute',
+                      left: '4px',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                      border: '1px solid rgba(99, 102, 241, 0.25)',
+                      borderRadius: '6px',
+                      color: '#818cf8',
+                      width: '28px',
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Icons.User size={15} />
+                  </button>
+                </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800 }}>رقم الهاتف / الجوال *</label>
-                <input type="text" className="form-control" required placeholder="05xxxxxxxx" value={newClient.phone} onChange={e => setNewClient({ ...newClient, phone: e.target.value })} style={{ height: '34px', fontSize: '0.8rem' }} />
+                <input
+                  type="text"
+                  className="form-control en-digits"
+                  required
+                  placeholder="05xxxxxxxx"
+                  value={newClient.phone}
+                  onChange={e => setNewClient({ ...newClient, phone: e.target.value })}
+                  style={{ height: '34px', fontSize: '0.8rem', direction: 'ltr', textAlign: 'left' }}
+                />
+                {(newClient.name.trim() || newClient.phone.trim()) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '2px' }}>
+                    <button
+                      type="button"
+                      onClick={() => openDeviceAddContact(newClient.name, newClient.phone)}
+                      title="حفظ العميل في جهات اتصال الهاتف"
+                      style={{
+                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                        border: '1px solid rgba(16, 185, 129, 0.25)',
+                        color: '#10b981',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Icons.UserPlus size={12} />
+                      <span>+ إضافة إلى جهات الاتصال</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openOfficialWhatsApp(newClient.phone, newClient.name)}
+                      title="فتح واتساب الرسمي"
+                      style={{
+                        backgroundColor: 'rgba(37, 211, 102, 0.1)',
+                        border: '1px solid rgba(37, 211, 102, 0.25)',
+                        color: '#25d366',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}
+                    >
+                      <Icons.MessageSquare size={12} />
+                      <span>إضافة من واتساب</span>
+                    </button>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800 }}>البريد الإلكتروني:</label>
@@ -1535,6 +1652,23 @@ export const ClientsView = () => {
           </div>
         </div>
       )}
+
+      {/* Device Contacts Fallback Modal */}
+      <DeviceContactsFallbackModal
+        isOpen={isContactFallbackOpen}
+        targetType="client"
+        initialName={newClient.name}
+        initialPhone={newClient.phone}
+        onClose={() => setIsContactFallbackOpen(false)}
+        onSelectContact={(c) => {
+          setNewClient(prev => ({
+            ...prev,
+            name: c.name || prev.name,
+            phone: c.phone || prev.phone
+          }));
+        }}
+        systemContacts={clients}
+      />
     </div>
   );
 
