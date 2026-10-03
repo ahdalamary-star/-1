@@ -27,11 +27,8 @@ export const BookingFormModal = () => {
 
   const isEditMode = Boolean(editingBooking);
 
-  // Default to 'freelancer' first, as requested: 1. ظپط±ظٹظ„ط§ظ†ط³ط±, 2. ط¹ظ…ظٹظ„, 3. ط´ط±ظƒط©
+  // 1. فريلانسر (الافتراضي)، 2. عميل، 3. شركة
   const [bookingType, setBookingType] = useState('freelancer'); // 'freelancer' | 'client' | 'company' | 'partnership'
-  const [entitySearch, setEntitySearch] = useState('');
-  const [entityPhone, setEntityPhone] = useState('');
-  const [selectedEntity, setSelectedEntity] = useState(null);
 
   // Dedicated Device Contacts states for Client and Photographer (Screens 1-12)
   const [clientName, setClientName] = useState('');
@@ -61,14 +58,10 @@ export const BookingFormModal = () => {
       setPhotographerName(name);
       setPhotographerPhone(phone);
       setSelectedPhotographer(contact);
-      setEntitySearch(name);
-      setEntityPhone(phone);
     } else {
       setClientName(name);
       setClientPhone(phone);
       setSelectedClient(contact);
-      setEntitySearch(name);
-      setEntityPhone(phone);
     }
   };
 
@@ -76,41 +69,32 @@ export const BookingFormModal = () => {
     setClientName('');
     setClientPhone('');
     setSelectedClient(null);
-    if (bookingType === 'client' || bookingType === 'company') {
-      setEntitySearch('');
-      setEntityPhone('');
-    }
   };
 
   const handleClearPhotographer = () => {
     setPhotographerName('');
     setPhotographerPhone('');
     setSelectedPhotographer(null);
-    if (bookingType === 'freelancer') {
-      setEntitySearch('');
-      setEntityPhone('');
-    }
   };
+
   const [bookingDate, setBookingDate] = useState('');
-  const [category, setCategory] = useState('ط²ظپط§ظپ');
+  const [category, setCategory] = useState('زفاف');
   const [customCategory, setCustomCategory] = useState('');
   const [startTime, setStartTime] = useState('16:00');
-  const [coveragePeriod, setCoveragePeriod] = useState('طµط¨ط§ط­ظ‹ط§');
+  const [coveragePeriod, setCoveragePeriod] = useState('صباحًا');
   const [isAllDay, setIsAllDay] = useState(false);
   const [attendanceTime, setAttendanceTime] = useState('');
   const [location, setLocation] = useState('');
   const [locationUrl, setLocationUrl] = useState('');
-  const [status, setStatus] = useState('ظ…ط¤ظƒط¯');
+  const [status, setStatus] = useState('مؤكد');
   const [notes, setNotes] = useState('');
   
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showPhoneSuggestions, setShowPhoneSuggestions] = useState(false);
   const [savedBooking, setSavedBooking] = useState(null);
 
   // States for Financials
   const [totalPrice, setTotalPrice] = useState(''); // Client price / Company price / Partnership price
   const [invoiceNumber, setInvoiceNumber] = useState(''); // Client / Company invoice
-  const [invoiceStatus, setInvoiceStatus] = useState('ط؛ظٹط± ظ…ط³ط¯ط¯'); // Company invoice status
+  const [invoiceStatus, setInvoiceStatus] = useState('غير مسدد'); // Company invoice status
   const [partnershipPercentage, setPartnershipPercentage] = useState(''); // Partnership percentage
 
   // States for Freelancer
@@ -121,9 +105,6 @@ export const BookingFormModal = () => {
   const [workingDaysCount, setWorkingDaysCount] = useState(1);
   const [scatteredDates, setScatteredDates] = useState(['']); // array of scattered dates
 
-  const dropdownRef = useRef(null);
-  const phoneDropdownRef = useRef(null);
-
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 768);
@@ -132,24 +113,24 @@ export const BookingFormModal = () => {
   }, []);
 
   const categories = [
-    'ط²ظپط§ظپ',
-    'ط²ظˆط§ط¬',
-    'ظ…ط¤طھظ…ط±',
-    'ظپط¹ط§ظ„ظٹط©',
-    'ط¬ظ„ط³ط© طھطµظˆظٹط±',
-    'ط¬ظ„ط³ط© طھطµظˆظٹط± ط¨ظˆط±طھط±ظٹظ‡',
-    'طھط؛ط·ظٹط© ط¥ط¹ظ„ط§ظ…ظٹط©',
-    'طھطµظˆظٹط± ظ…ظ†طھط¬ط§طھ',
-    'طھطµظˆظٹط± ط£ط·ط¹ظ…ط©',
-    'طھطµظˆظٹط± ط¹ظ‚ط§ط±ط§طھ',
-    'طھطµظˆظٹط± ظ…ظ†ط§ط³ط¨ط§طھ',
-    'طھطµظˆظٹط± طھط¬ط§ط±ظٹ',
-    'طھطµظˆظٹط± ظ…ط­طھظˆظ‰',
-    'طھطµظˆظٹط± ط¥ط¹ظ„ط§ظ†ظٹ',
-    'ظپظٹط¯ظٹظˆ',
-    'ط¨ط« ظ…ط¨ط§ط´ط±',
-    'طھطµظˆظٹط± ظˆط¨ط« ظ…ط¨ط§ط´ط±',
-    'ط£ط®ط±ظ‰'
+    'زفاف',
+    'زواج',
+    'مؤتمر',
+    'فعالية',
+    'جلسة تصوير',
+    'جلسة تصوير بورتريه',
+    'تغطية إعلامية',
+    'تصوير منتجات',
+    'تصوير أطعمة',
+    'تصوير عقارات',
+    'تصوير مناسبات',
+    'تصوير تجاري',
+    'تصوير محتوى',
+    'تصوير إعلاني',
+    'فيديو',
+    'بث مباشر',
+    'تصوير وبث مباشر',
+    'أخرى'
   ];
 
   // Initialize form defaults when opened or when editingBooking changes
@@ -159,19 +140,19 @@ export const BookingFormModal = () => {
       if (window.bookingDraft) {
         const d = window.bookingDraft;
         setBookingType(d.bookingType || 'freelancer');
-        setCategory(d.category || 'ط²ظپط§ظپ');
+        setCategory(d.category || 'زفاف');
         setCustomCategory(d.customCategory || '');
         setBookingDate(d.bookingDate || '');
-        setCoveragePeriod(d.coveragePeriod || 'طµط¨ط§ط­ظ‹ط§');
+        setCoveragePeriod(d.coveragePeriod || 'صباحًا');
         setIsAllDay(Boolean(d.isAllDay));
         setAttendanceTime(d.attendanceTime || '');
         setLocation(d.location || '');
         setLocationUrl(d.locationUrl || '');
-        setStatus(d.status || 'ظ…ط¤ظƒط¯');
+        setStatus(d.status || 'مؤكد');
         setNotes(d.notes || '');
         setTotalPrice(d.totalPrice || '');
         setInvoiceNumber(d.invoiceNumber || '');
-        setInvoiceStatus(d.invoiceStatus || 'ط؛ظٹط± ظ…ط³ط¯ط¯');
+        setInvoiceStatus(d.invoiceStatus || 'غير مسدد');
         setPartnershipPercentage(d.partnershipPercentage || '');
         setFreelancerMode(d.freelancerMode || 'scattered');
         setStartDate(d.startDate || '');
@@ -179,22 +160,12 @@ export const BookingFormModal = () => {
         setDailyRate(d.dailyRate || '');
         setWorkingDaysCount(d.workingDaysCount || 1);
         setScatteredDates(d.scatteredDates || ['']);
+        setClientName(d.clientName || '');
+        setClientPhone(d.clientPhone || '');
+        setPhotographerName(d.photographerName || '');
+        setPhotographerPhone(d.photographerPhone || '');
         if (d.editingBooking) {
           setEditingBooking(d.editingBooking);
-        }
-
-        if (window.prefilledEntity) {
-          const ent = window.prefilledEntity;
-          if (ent.type && ['freelancer', 'client', 'company'].includes(ent.type)) {
-            setBookingType(ent.type);
-          }
-          setEntitySearch(ent.name || '');
-          setEntityPhone(ent.phone || '');
-          setSelectedEntity(ent);
-          window.prefilledEntity = null;
-        } else {
-          setEntitySearch(d.entitySearch || '');
-          setEntityPhone(d.entityPhone || '');
         }
 
         window.bookingDraft = null;
@@ -217,44 +188,40 @@ export const BookingFormModal = () => {
         const pPhone = b.freelancerPhone || (bType === 'freelancer' ? (b.contactPhone || b.phone || '') : '');
         setPhotographerName(pName);
         setPhotographerPhone(pPhone);
-
-        const name = bType === 'freelancer' ? (pName || cName) : (cName || pName);
-        setEntitySearch(name);
-        setEntityPhone(bType === 'freelancer' ? (pPhone || cPhone) : (cPhone || pPhone));
         
         const dateVal = b.date || b.startDate || '';
         setBookingDate(dateVal);
         
-        const cat = b.category || b.coverageType || 'ط²ظپط§ظپ';
+        const cat = b.category || b.coverageType || 'زفاف';
         if (categories.includes(cat)) {
           setCategory(cat);
           setCustomCategory('');
-        } else if (cat === 'طھطµظˆظٹط± ظ…ظ†ط§ط³ط¨ط©') {
-          setCategory('طھطµظˆظٹط± ظ…ظ†ط§ط³ط¨ط§طھ');
+        } else if (cat === 'تصوير مناسبة') {
+          setCategory('تصوير مناسبات');
           setCustomCategory('');
-        } else if (cat === 'ط¹ظ‚ط§ط±') {
-          setCategory('طھطµظˆظٹط± ط¹ظ‚ط§ط±ط§طھ');
+        } else if (cat === 'عقار') {
+          setCategory('تصوير عقارات');
           setCustomCategory('');
-        } else if (cat === 'ظ…ظ†طھط¬ط§طھ') {
-          setCategory('طھطµظˆظٹط± ظ…ظ†طھط¬ط§طھ');
+        } else if (cat === 'منتجات') {
+          setCategory('تصوير منتجات');
           setCustomCategory('');
         } else {
-          setCategory('ط£ط®ط±ظ‰');
+          setCategory('أخرى');
           setCustomCategory(cat);
         }
         
         setIsAllDay(Boolean(b.isAllDay));
-        const period = (b.startTime?.includes('ظ…ط³ط§ط،') || b.endTime?.includes('ظ…ط³ط§ط،')) ? 'ظ…ط³ط§ط،ظ‹' : 'طµط¨ط§ط­ظ‹ط§';
+        const period = (b.startTime?.includes('مساء') || b.endTime?.includes('مساء')) ? 'مساءً' : 'صباحًا';
         setCoveragePeriod(period);
         setAttendanceTime(b.attendanceTime || '');
         setLocation(b.hallName || b.location || '');
         setLocationUrl(b.locationUrl || b.googleMapsUrl || '');
-        setStatus(b.status || 'ظ…ط¤ظƒط¯');
+        setStatus(b.status || 'مؤكد');
         setNotes(b.notes || '');
         
         setTotalPrice(b.totalPrice !== undefined && b.totalPrice !== null ? String(b.totalPrice) : '');
         setInvoiceNumber(b.invoiceNumber || '');
-        setInvoiceStatus(b.paymentStatus || 'ط؛ظٹط± ظ…ط³ط¯ط¯');
+        setInvoiceStatus(b.paymentStatus || 'غير مسدد');
         setPartnershipPercentage(b.partnershipPercentage !== undefined && b.partnershipPercentage !== null ? String(b.partnershipPercentage) : '');
         
         setDailyRate(b.dailyRate !== undefined && b.dailyRate !== null ? String(b.dailyRate) : '');
@@ -274,25 +241,34 @@ export const BookingFormModal = () => {
         const todayStr = `${yyyy}-${mm}-${dd}`;
         
         const hour = today.getHours();
-        setCoveragePeriod(hour < 12 ? 'طµط¨ط§ط­ظ‹ط§' : 'ظ…ط³ط§ط،ظ‹');
+        setCoveragePeriod(hour < 12 ? 'صباحًا' : 'مساءً');
         setIsAllDay(false);
         setAttendanceTime('');
         setBookingDate(selectedDateForBooking || todayStr);
-        setCategory('ط²ظپط§ظپ');
+        setCategory('زفاف');
         setCustomCategory('');
         setLocation('');
         setLocationUrl('');
-        setStatus('ظ…ط¤ظƒط¯');
+        setStatus('مؤكد');
         setNotes('');
         setSavedBooking(null);
+
+        // Reset Contacts
+        setClientName('');
+        setClientPhone('');
+        setSelectedClient(null);
+        setPhotographerName('');
+        setPhotographerPhone('');
+        setSelectedPhotographer(null);
 
         // Financials reset
         setTotalPrice('');
         setInvoiceNumber('');
-        setInvoiceStatus('ط؛ظٹط± ظ…ط³ط¯ط¯');
+        setInvoiceStatus('غير مسدد');
         setPartnershipPercentage('');
 
         // Freelancer reset
+        setBookingType('freelancer');
         setFreelancerMode('scattered');
         setStartDate(selectedDateForBooking || todayStr);
         setEndDate(selectedDateForBooking || todayStr);
@@ -303,22 +279,19 @@ export const BookingFormModal = () => {
         // Support Cooperation Log prefilled redirect
         if (window.prefilledEntity) {
           const ent = window.prefilledEntity;
-          setBookingType(ent.type);
-          setEntitySearch(ent.name);
-          setEntityPhone(ent.phone || '');
-          setSelectedEntity({
-            id: ent.id,
-            name: ent.name,
-            phone: ent.phone,
-            email: ent.email,
-            monthlyAccount: ent.monthlyAccount
-          });
+          if (ent.type === 'freelancer') {
+            setPhotographerName(ent.name || '');
+            setPhotographerPhone(ent.phone || '');
+            setSelectedPhotographer(ent);
+          } else {
+            setClientName(ent.name || '');
+            setClientPhone(ent.phone || '');
+            setSelectedClient(ent);
+          }
+          if (ent.type && ['freelancer', 'client', 'company'].includes(ent.type)) {
+            setBookingType(ent.type);
+          }
           window.prefilledEntity = null; // consume it
-        } else {
-          setBookingType('freelancer');
-          setEntitySearch('');
-          setEntityPhone('');
-          setSelectedEntity(null);
         }
       }
     }
@@ -347,133 +320,16 @@ export const BookingFormModal = () => {
     }
   }, [scatteredDates, bookingType, freelancerMode]);
 
-  // Close suggestions on outside click
-  useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowSuggestions(false);
-      }
-      if (phoneDropdownRef.current && !phoneDropdownRef.current.contains(e.target)) {
-        setShowPhoneSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
-
   if (!isBookingFormOpen) return null;
 
-  // Navigate directly to dedicated contacts section while preserving current booking draft
-  const handleNavigateToContacts = (prefillQuery = '') => {
-    window.bookingDraft = {
-      bookingType,
-      category,
-      customCategory,
-      bookingDate,
-      coveragePeriod,
-      isAllDay,
-      attendanceTime,
-      location,
-      locationUrl,
-      status,
-      notes,
-      totalPrice,
-      invoiceNumber,
-      invoiceStatus,
-      partnershipPercentage,
-      freelancerMode,
-      startDate,
-      endDate,
-      dailyRate,
-      workingDaysCount,
-      scatteredDates,
-      editingBooking,
-      entitySearch,
-      entityPhone
-    };
-    window.pendingContactSearch = prefillQuery || entityPhone || entitySearch;
-    window.returnToBooking = true;
-    setShowSuggestions(false);
-    setShowPhoneSuggestions(false);
-    setIsBookingFormOpen(false);
-    if (setActiveTab) {
-      setActiveTab('clients');
-    }
-  };
-
-  const handleEntitySearchChange = (val) => {
-    setEntitySearch(val);
-    setSelectedEntity(null);
-    setShowSuggestions(true);
-  };
-
-  const handlePhoneChange = (val) => {
-    setEntityPhone(val);
-    setShowPhoneSuggestions(true);
-  };
-
-  // Contacts directory is the single source of truth
-  const getUnifiedContactList = () => {
-    return allContacts && allContacts.length > 0 ? allContacts : [
-      ...(freelancers || []).map(f => ({ ...f, type: 'freelancer' })),
-      ...(clients || []).map(c => ({ ...c, type: 'client' })),
-      ...(companies || []).map(cp => ({ ...cp, type: 'company' }))
-    ];
-  };
-
-  // Autocomplete by contact name or phone
-  const getSuggestions = () => {
-    const q = entitySearch.toLowerCase().trim();
-    if (!q) return [];
-    
-    const list = getUnifiedContactList();
-    const digitsOnly = q.replace(/[^\d+]/g, '');
-
-    return list.filter(c => {
-      const matchName = c.name && c.name.toLowerCase().includes(q);
-      const cDigits = (c.phone || '').replace(/[^\d+]/g, '');
-      const matchPhone = digitsOnly ? cDigits.includes(digitsOnly) : (c.phone && c.phone.includes(q));
-      return matchName || matchPhone;
-    }).slice(0, 6);
-  };
-
-  // Autocomplete for phone input by phone or name
-  const getPhoneSuggestions = () => {
-    const q = entityPhone.toLowerCase().trim();
-    if (!q) return [];
-
-    const list = getUnifiedContactList();
-    const digitsOnly = q.replace(/[^\d+]/g, '');
-
-    return list.filter(c => {
-      const cDigits = (c.phone || '').replace(/[^\d+]/g, '');
-      const matchPhone = digitsOnly ? cDigits.includes(digitsOnly) : (c.phone && c.phone.includes(q));
-      const matchName = c.name && c.name.toLowerCase().includes(q);
-      return matchPhone || matchName;
-    }).slice(0, 6);
-  };
-
-  const handleSelectEntity = (ent) => {
-    setSelectedEntity(ent);
-    setEntitySearch(ent.name || '');
-    if (ent.phone) {
-      setEntityPhone(ent.phone);
-    }
-    if (ent.type && ['freelancer', 'client', 'company'].includes(ent.type)) {
-      setBookingType(ent.type);
-    }
-    setShowSuggestions(false);
-    setShowPhoneSuggestions(false);
-  };
-
   const handleSave = () => {
-    const name = clientName.trim() || photographerName.trim() || entitySearch.trim();
+    const name = clientName.trim() || photographerName.trim();
     if (!name) {
       alert('يرجى اختيار العميل أو المصور لإتمام الحجز');
       return;
     }
 
-    const finalCategory = category === 'ط£ط®ط±ظ‰' && customCategory.trim()
+    const finalCategory = category === 'أخرى' && customCategory.trim()
       ? customCategory.trim()
       : category;
 
@@ -487,15 +343,15 @@ export const BookingFormModal = () => {
       title: bookingTitle,
       category: finalCategory,
       coverageType: finalCategory,
-      startTime: isAllDay ? 'ط·ظˆط§ظ„ ط§ظ„ظٹظˆظ…' : coveragePeriod,
-      endTime: isAllDay ? 'ط·ظˆط§ظ„ ط§ظ„ظٹظˆظ…' : coveragePeriod,
+      startTime: isAllDay ? 'طوال اليوم' : coveragePeriod,
+      endTime: isAllDay ? 'طوال اليوم' : coveragePeriod,
       isAllDay,
       attendanceTime: attendanceTime || '',
       location: location.trim(),
       hallName: location.trim(),
       locationUrl: locationUrl.trim() ? (locationUrl.trim().startsWith('http') ? locationUrl.trim() : `https://${locationUrl.trim()}`) : '',
       googleMapsUrl: locationUrl.trim() ? (locationUrl.trim().startsWith('http') ? locationUrl.trim() : `https://${locationUrl.trim()}`) : '',
-      status: status || 'ظ…ط¤ظƒط¯',
+      status: status || 'مؤكد',
       notes: notes || '',
       deposit: editingBooking ? editingBooking.deposit : null,
       paidAmount: editingBooking ? (editingBooking.paidAmount || 0) : 0,
@@ -504,71 +360,47 @@ export const BookingFormModal = () => {
     };
 
     // Populate entity metadata with both Client & Photographer
-    bookingData.clientName = clientName.trim() || (bookingType === 'client' ? name : '');
-    bookingData.clientPhone = clientPhone.trim() || (bookingType === 'client' ? (entityPhone || '') : '');
+    bookingData.clientName = clientName.trim();
+    bookingData.clientPhone = clientPhone.trim();
     bookingData.clientId = selectedClient?.id || null;
 
-    bookingData.freelancerName = photographerName.trim() || (bookingType === 'freelancer' ? name : '');
-    bookingData.freelancerPhone = photographerPhone.trim() || (bookingType === 'freelancer' ? (entityPhone || '') : '');
+    bookingData.freelancerName = photographerName.trim();
+    bookingData.freelancerPhone = photographerPhone.trim();
     bookingData.freelancerId = selectedPhotographer?.id || null;
     bookingData.assignedPhotographer = bookingData.freelancerName;
 
-    bookingData.contactPhone = clientPhone || photographerPhone || entityPhone || '';
-    bookingData.phone = clientPhone || photographerPhone || entityPhone || '';
+    bookingData.contactPhone = clientPhone || photographerPhone || '';
+    bookingData.phone = clientPhone || photographerPhone || '';
     bookingData.contactName = name;
 
-    if (selectedEntity) {
-      if (bookingType === 'client') {
-        bookingData.clientId = selectedEntity.id;
-        bookingData.clientName = selectedEntity.name;
-        bookingData.clientPhone = entityPhone || selectedEntity.phone || '';
-        bookingData.clientEmail = selectedEntity.email || '';
-        bookingData.companyName = selectedEntity.companyName || '';
-      } else if (bookingType === 'freelancer') {
-        bookingData.freelancerId = selectedEntity.id;
-        bookingData.freelancerName = selectedEntity.name;
-        bookingData.freelancerPhone = entityPhone || selectedEntity.phone || '';
-        bookingData.clientPhone = entityPhone || selectedEntity.phone || '';
-        bookingData.freelancerEmail = selectedEntity.email || '';
-        bookingData.isMonthlyAccount = selectedEntity.monthlyAccount || false;
-      } else if (bookingType === 'company' || bookingType === 'partnership') {
-        bookingData.companyId = selectedEntity.id;
-        bookingData.companyName = selectedEntity.name;
-        bookingData.contactPerson = selectedEntity.contactPerson || '';
-        bookingData.contactPhone = entityPhone || selectedEntity.phone || '';
-        bookingData.clientPhone = entityPhone || selectedEntity.phone || '';
-        bookingData.companyEmail = selectedEntity.email || '';
+    // Ensure new contact is added to the unified contacts directory as single source of truth
+    if (clientPhone && clientName && addContact) {
+      const existing = (allContacts || []).find(c => 
+        (c.phone && c.phone.replace(/[^\d+]/g, '') === clientPhone.replace(/[^\d+]/g, '')) ||
+        (c.name && c.name.trim().toLowerCase() === clientName.trim().toLowerCase())
+      );
+      if (!existing) {
+        addContact({
+          name: clientName,
+          phone: clientPhone,
+          role: bookingType === 'company' ? 'شركة شريكة' : 'عميل',
+          type: bookingType === 'company' ? 'company' : 'client'
+        });
       }
-    } else {
-      // Custom / Device Contact name & phone creation
-      if (bookingType === 'client') {
-        bookingData.clientName = name;
-        bookingData.clientPhone = entityPhone || '';
-      } else if (bookingType === 'freelancer') {
-        bookingData.freelancerName = name;
-        bookingData.freelancerPhone = entityPhone || '';
-        bookingData.clientPhone = entityPhone || '';
-        bookingData.isMonthlyAccount = false;
-      } else if (bookingType === 'company' || bookingType === 'partnership') {
-        bookingData.companyName = name;
-        bookingData.contactPhone = entityPhone || '';
-        bookingData.clientPhone = entityPhone || '';
-      }
+    }
 
-      // Ensure new contact is added to the unified contacts directory as single source of truth
-      if (entityPhone && name && addContact) {
-        const existing = (allContacts || []).find(c => 
-          (c.phone && c.phone.replace(/[^\d+]/g, '') === entityPhone.replace(/[^\d+]/g, '')) ||
-          (c.name && c.name.trim().toLowerCase() === name.trim().toLowerCase())
-        );
-        if (!existing) {
-          addContact({
-            name,
-            phone: entityPhone,
-            role: bookingType === 'freelancer' ? 'ظ…طµظˆط± / ظپط±ظٹظ„ط§ظ†ط³ط±' : (bookingType === 'company' ? 'ط´ط±ظƒط© ط´ط±ظٹظƒط©' : 'ط¹ظ…ظٹظ„'),
-            type: bookingType
-          });
-        }
+    if (photographerPhone && photographerName && addContact) {
+      const existing = (allContacts || []).find(c => 
+        (c.phone && c.phone.replace(/[^\d+]/g, '') === photographerPhone.replace(/[^\d+]/g, '')) ||
+        (c.name && c.name.trim().toLowerCase() === photographerName.trim().toLowerCase())
+      );
+      if (!existing) {
+        addContact({
+          name: photographerName,
+          phone: photographerPhone,
+          role: 'مصور / فريلانسر',
+          type: 'freelancer'
+        });
       }
     }
 
@@ -586,7 +418,7 @@ export const BookingFormModal = () => {
       bookingData.endDate = bookingDate;
       bookingData.totalPrice = totalPrice !== '' ? Number(totalPrice) : null;
       bookingData.invoiceNumber = invoiceNumber || '';
-      bookingData.paymentStatus = invoiceStatus || 'ط؛ظٹط± ظ…ط³ط¯ط¯';
+      bookingData.paymentStatus = invoiceStatus || 'غير مسدد';
       
     } else if (bookingType === 'partnership') {
       bookingData.date = bookingDate;
@@ -624,16 +456,15 @@ export const BookingFormModal = () => {
       bookingData.startDate = dates[0] || bookingDate;
       bookingData.endDate = dates[dates.length - 1] || bookingDate;
       bookingData.totalPrice = dailyRate !== '' ? Number(dailyRate) : null;
-      
     }
 
     const paidAmount = isEditMode && editingBooking.paidAmount ? Number(editingBooking.paidAmount) : 0;
-      bookingData.paidAmount = paidAmount;
-      if (bookingData.totalPrice !== undefined && bookingData.totalPrice !== null) {
-        bookingData.remainingAmount = bookingData.totalPrice - paidAmount;
-      }
+    bookingData.paidAmount = paidAmount;
+    if (bookingData.totalPrice !== undefined && bookingData.totalPrice !== null) {
+      bookingData.remainingAmount = bookingData.totalPrice - paidAmount;
+    }
 
-      if (isEditMode) {
+    if (isEditMode) {
       if (updateBooking) {
         const updated = updateBooking(editingBooking.id, bookingData);
         setSavedBooking(updated || { ...editingBooking, ...bookingData });
@@ -658,17 +489,17 @@ export const BookingFormModal = () => {
           </div>
           <div>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 900, margin: '0 0 6px 0', color: 'var(--text-main)' }}>
-              {isEditMode ? 'طھظ… ط­ظپط¸ ط§ظ„طھط¹ط¯ظٹظ„ط§طھ ط¨ظ†ط¬ط§ط­ âœ“' : 'طھظ… ط¥ظ†ط´ط§ط، ط§ظ„ط­ط¬ط² ط¨ظ†ط¬ط§ط­ âœ“'}
+              {isEditMode ? 'تم حفظ التعديلات بنجاح ✓' : 'تم إنشاء الحجز بنجاح ✓'}
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
-              ط±ظ‚ظ… ط§ظ„ط­ط¬ط² ط§ظ„ظ…ط±ط¬ط¹ظٹ: <strong>{formatBookingNumber(savedBooking.bookingNumber)}</strong>
+              رقم الحجز المرجعي: <strong>{formatBookingNumber(savedBooking.bookingNumber)}</strong>
             </p>
             <p style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-main)', marginTop: '8px' }}>
               {savedBooking.title}
             </p>
             {bookingType === 'freelancer' && (
               <p style={{ fontSize: '0.76rem', color: 'var(--status-success)', fontWeight: 800, marginTop: '4px' }}>
-                ط¬ط¯ظˆظ„ط© {workingDaysCount} ظٹظˆظ… ط¹ظ…ظ„ ط¨ط¥ط¬ظ…ط§ظ„ظٹ ظ…ط³طھط­ظ‚: {calculatedTotalDue.toLocaleString('en-US')} ط±ظٹط§ظ„.
+                جدولة {workingDaysCount} يوم عمل بإجمالي مستحق: {calculatedTotalDue.toLocaleString('en-US')} ريال.
               </p>
             )}
           </div>
@@ -684,7 +515,7 @@ export const BookingFormModal = () => {
               className="btn btn-primary"
               style={{ flex: 1, height: '40px', fontWeight: 900, fontSize: '0.82rem' }}
             >
-              <span>ظپطھط­ ط§ظ„ط­ط¬ط² ًں‘پï¸ڈ</span>
+              <span>فتح الحجز 👁️</span>
             </button>
             <button
               onClick={() => {
@@ -695,7 +526,7 @@ export const BookingFormModal = () => {
               className="btn btn-secondary"
               style={{ flex: 1, height: '40px', fontWeight: 900, fontSize: '0.82rem' }}
             >
-              <span>ط¥ط؛ظ„ط§ظ‚</span>
+              <span>إغلاق</span>
             </button>
           </div>
         </div>
@@ -729,7 +560,9 @@ export const BookingFormModal = () => {
           flexDirection: 'column',
           boxShadow: '0 -10px 25px -5px rgba(0, 0, 0, 0.2)',
           padding: '20px 20px 16px 20px',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          direction: 'rtl',
+          textAlign: 'right'
         } : {
           maxWidth: '500px',
           width: '90%',
@@ -741,14 +574,16 @@ export const BookingFormModal = () => {
           display: 'flex',
           flexDirection: 'column',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          direction: 'rtl',
+          textAlign: 'right'
         }}
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px', marginBottom: '12px' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 950, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Icons.Zap size={18} style={{ color: getThemeColor() }} />
-            <span>{isEditMode ? 'âœڈï¸ڈ طھط¹ط¯ظٹظ„ ط¨ظٹط§ظ†ط§طھ ط§ظ„ط­ط¬ط²' : '+ ط­ط¬ط² ط³ط±ظٹط¹ ظ„ظ„ط®ط¶ظˆط¹ ظ„ظ„ط¬ط¯ظˆظ„ط©'}</span>
+            <span>{isEditMode ? '✏️ تعديل بيانات الحجز' : '+ حجز سريع للخضوع للجدولة'}</span>
           </h3>
           <button className="btn btn-icon btn-secondary" style={{ width: '30px', height: '30px', padding: 0 }} onClick={() => { setIsBookingFormOpen(false); if (setEditingBooking) setEditingBooking(null); }}>
             <Icons.X size={18} />
@@ -756,11 +591,11 @@ export const BookingFormModal = () => {
         </div>
 
         {/* Form Body Scrollable Container */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingLeft: '4px', paddingRight: '4px', marginBottom: '8px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px', paddingLeft: '4px', paddingRight: '4px', marginBottom: '8px', direction: 'rtl', textAlign: 'right' }}>
 
-          {/* 1. Entity type tab selector - Requirement 1: Swap Place of Client with Freelancer */}
+          {/* 1. Entity type tab selector: 1. فريلانسر، 2. عميل، 3. شركة */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>طھطµظ†ظٹظپ ط§ظ„ط­ط¬ط² ظˆط§ظ„طھط¹ط§ظ…ظ„:</label>
+            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>تصنيف الحجز والتعامل:</label>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', backgroundColor: 'var(--bg-main)', padding: '3px', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
               <button
                 type="button"
@@ -777,7 +612,7 @@ export const BookingFormModal = () => {
                   transition: 'all 0.15s'
                 }}
               >
-                ًں‘¤ ظپط±ظٹظ„ط§ظ†ط³ط±
+                👤 فريلانسر
               </button>
               <button
                 type="button"
@@ -794,7 +629,7 @@ export const BookingFormModal = () => {
                   transition: 'all 0.15s'
                 }}
               >
-                ًں“· ط¹ظ…ظٹظ„
+                📷 عميل
               </button>
               <button
                 type="button"
@@ -811,14 +646,13 @@ export const BookingFormModal = () => {
                   transition: 'all 0.15s'
                 }}
               >
-                ًںڈ¢ ط´ط±ظƒط©
+                🏢 شركة
               </button>
             </div>
           </div>
 
-          {/* 2. Device Contacts: Client & Photographer Fields (Screens 1, 4, 9, 10, 11, 12) */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
-            {/* العميل (Client) */}
+          {/* 2. الحقل 1: العميل (مع أيقونة 👤 وزر «+ إضافة إلى جهات الاتصال» مرة واحدة فقط) */}
+          <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
             <ContactField
               label={bookingType === 'company' ? 'اسم الشركة / العميل:' : 'العميل:'}
               roleType="client"
@@ -828,8 +662,10 @@ export const BookingFormModal = () => {
               onClear={handleClearClient}
               onRequestPicker={(role, action) => handleRequestPicker(role, action)}
             />
+          </div>
 
-            {/* المصور (Photographer / Freelancer) */}
+          {/* 3. الحقل 2: المصور (مع أيقونة 👤 وزر «+ إضافة إلى جهات الاتصال» مرة واحدة فقط) */}
+          <div style={{ borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
             <ContactField
               label="المصور:"
               roleType="freelancer"
@@ -841,10 +677,35 @@ export const BookingFormModal = () => {
             />
           </div>
 
-          {/* 3. Date selection (shown for non-freelancer types, or base date) */}
+          {/* 4. الحقل 3: نوع الحجز */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
+            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>نوع الحجز:</label>
+            <select
+              className="form-control"
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 10px', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
+            >
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+            {category === 'أخرى' && (
+              <input
+                type="text"
+                className="form-control"
+                placeholder="اكتب نوع الحجز المخصص..."
+                value={customCategory}
+                onChange={e => setCustomCategory(e.target.value)}
+                style={{ height: '38px', borderRadius: '8px', fontSize: '0.82rem', marginTop: '4px', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
+              />
+            )}
+          </div>
+
+          {/* 5. تاريخ التغطية / الحجز (يظهر لغير الفريلانسر المجدول) */}
           {bookingType !== 'freelancer' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>طھط§ط±ظٹط® ط§ظ„طھط؛ط·ظٹط© / ط§ظ„ط­ط¬ط²:</label>
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>تاريخ التغطية / الحجز:</label>
               <input
                 type="date"
                 className="form-control"
@@ -855,35 +716,10 @@ export const BookingFormModal = () => {
             </div>
           )}
 
-          {/* 4. Category / Booking Type dropdown */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ظ†ظˆط¹ ط§ظ„ط­ط¬ط²:</label>
-            <select
-              className="form-control"
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 10px' }}
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-            {category === 'ط£ط®ط±ظ‰' && (
-              <input
-                type="text"
-                className="form-control"
-                placeholder="ط§ظƒطھط¨ ظ†ظˆط¹ ط§ظ„ط­ط¬ط² ط§ظ„ظ…ط®طµطµ..."
-                value={customCategory}
-                onChange={e => setCustomCategory(e.target.value)}
-                style={{ height: '38px', borderRadius: '8px', fontSize: '0.82rem', marginTop: '4px' }}
-              />
-            )}
-          </div>
-
-          {/* Time Picker Block */}
+          {/* 6. توقيت التغطية */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)', margin: 0 }}>طھظˆظ‚ظٹطھ ط§ظ„طھط؛ط·ظٹط©:</label>
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)', margin: 0 }}>توقيت التغطية:</label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-main)', cursor: 'pointer', margin: 0 }}>
                 <input
                   type="checkbox"
@@ -891,7 +727,7 @@ export const BookingFormModal = () => {
                   onChange={e => setIsAllDay(e.target.checked)}
                   style={{ width: '15px', height: '15px', accentColor: 'var(--primary-color)' }}
                 />
-                <span>ط·ظˆط§ظ„ ط§ظ„ظٹظˆظ… (ظ…ظ‡ظ…ط© ظ…ظ…طھط¯ط©) ًں“…</span>
+                <span>طوال اليوم (مهمة ممتدة) 📅</span>
               </label>
             </div>
 
@@ -899,8 +735,8 @@ export const BookingFormModal = () => {
               <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                 <button
                   type="button"
-                  onClick={() => setCoveragePeriod('طµط¨ط§ط­ظ‹ط§')}
-                  className={`btn ${coveragePeriod === 'طµط¨ط§ط­ظ‹ط§' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setCoveragePeriod('صباحًا')}
+                  className={`btn ${coveragePeriod === 'صباحًا' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{
                     flex: 1,
                     height: '40px',
@@ -915,12 +751,12 @@ export const BookingFormModal = () => {
                     transition: 'all 0.2s ease-in-out'
                   }}
                 >
-                  âک€ï¸ڈ طµط¨ط§ط­ظ‹ط§
+                  ☀️ صباحًا
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCoveragePeriod('ظ…ط³ط§ط،ظ‹')}
-                  className={`btn ${coveragePeriod === 'ظ…ط³ط§ط،ظ‹' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setCoveragePeriod('مساءً')}
+                  className={`btn ${coveragePeriod === 'مساءً' ? 'btn-primary' : 'btn-secondary'}`}
                   style={{
                     flex: 1,
                     height: '40px',
@@ -935,41 +771,41 @@ export const BookingFormModal = () => {
                     transition: 'all 0.2s ease-in-out'
                   }}
                 >
-                  ًںŒ™ ظ…ط³ط§ط،ظ‹
+                  🌙 مساءً
                 </button>
               </div>
             )}
           </div>
 
-          {/* Attendance Time Picker */}
+          {/* 7. وقت الحضور (اختياري) */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
-            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط± (ط§ط®طھظٹط§ط±ظٹ):</label>
+            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>وقت الحضور (اختياري):</label>
             <AttendanceTimePicker
               value={attendanceTime}
               onChange={setAttendanceTime}
-              placeholder="ط§ط®طھط± ظˆظ‚طھ ط§ظ„ط­ط¶ظˆط± âڈ° (ظ…ظ† 7:00 طµ ط¥ظ„ظ‰ 12:00 طµ)"
+              placeholder="اختر وقت الحضور ⏰ (من 7:00 ص إلى 12:00 ص)"
             />
           </div>
 
-          {/* ط§ط³ظ… ط§ظ„ظ‚ط§ط¹ط© & ط±ط§ط¨ط· ظ…ظˆظ‚ط¹ ط§ظ„ظ‚ط§ط¹ط© */}
+          {/* 8. اسم القاعة & رابط موقع القاعة */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ط§ط³ظ… ط§ظ„ظ‚ط§ط¹ط©:</label>
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>اسم القاعة:</label>
               <input
                 type="text"
                 className="form-control"
-                placeholder="ط§ط³ظ… ط§ظ„ظ‚ط§ط¹ط© (ط§ط®طھظٹط§ط±ظٹ)"
+                placeholder="اسم القاعة (اختياري)"
                 value={location}
                 onChange={e => setLocation(e.target.value)}
-                style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem' }}
+                style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ط±ط§ط¨ط· ظ…ظˆظ‚ط¹ ط§ظ„ظ‚ط§ط¹ط©:</label>
+              <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>رابط موقع القاعة:</label>
               <input
                 type="url"
                 className="form-control en-digits"
-                placeholder="ط±ط§ط¨ط· ظ…ظˆظ‚ط¹ ط§ظ„ظ‚ط§ط¹ط© (ط§ط®طھظٹط§ط±ظٹ)"
+                placeholder="رابط موقع القاعة (اختياري)"
                 value={locationUrl}
                 onChange={e => setLocationUrl(e.target.value)}
                 style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', textAlign: 'left', direction: 'ltr' }}
@@ -977,32 +813,32 @@ export const BookingFormModal = () => {
             </div>
           </div>
 
-          {/* Status Select */}
+          {/* 9. حالة الحجز */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ط­ط§ظ„ط© ط§ظ„ط­ط¬ط²:</label>
+            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>حالة الحجز:</label>
             <select
               className="form-control"
               value={status}
               onChange={e => setStatus(e.target.value)}
-              style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 8px' }}
+              style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 8px', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
             >
-              <option value="ظ…ط¤ظƒط¯">ظ…ط¤ظƒط¯</option>
-              <option value="ط¨ط§ظ†طھط¸ط§ط± ط§ظ„طھط£ظƒظٹط¯">ط¨ط§ظ†طھط¸ط§ط± ط§ظ„طھط£ظƒظٹط¯</option>
-              <option value="ط¬ط§ط±ظٹ ط§ظ„طھظ†ظپظٹط°">ط¬ط§ط±ظٹ ط§ظ„طھظ†ظپظٹط°</option>
-              <option value="ظ…ظƒطھظ…ظ„">ظ…ظƒطھظ…ظ„</option>
-              <option value="ظ…ظ„ط؛ظٹ">ظ…ظ„ط؛ظٹ</option>
+              <option value="مؤكد">مؤكد</option>
+              <option value="بانتظار التأكيد">بانتظار التأكيد</option>
+              <option value="جاري التنفيذ">جاري التنفيذ</option>
+              <option value="مكتمل">مكتمل</option>
+              <option value="ملغي">ملغي</option>
             </select>
           </div>
 
-          {/* â”€â”€â”€ DYNAMIC FINANCIAL & SPECIFIC FIELDS â”€â”€â”€ */}
+          {/* 10. التفاصيل المالية والجدولة */}
           
-          {/* A. FREELANCER FIELDS */}
+          {/* A. حقول الفريلانسر */}
           {bookingType === 'freelancer' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px dashed var(--border-color)', paddingTop: '14px' }}>
               
-              {/* Mode selection: Scattered vs Consecutive */}
+              {/* اختيار نوع الجدولة: أيام متفرقة أو متتالية */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ظ†ظˆط¹ ط¬ط¯ظˆظ„ط© ط§ظ„ط¹ظ…ظ„ ظ„ظ„ظپط±ظٹظ„ط§ظ†ط³ط±:</label>
+                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>نوع جدولة العمل للفريلانسر:</label>
                 <div style={{ display: 'flex', backgroundColor: 'var(--bg-main)', padding: '3px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <button
                     type="button"
@@ -1020,7 +856,7 @@ export const BookingFormModal = () => {
                       transition: 'all 0.15s'
                     }}
                   >
-                    ًں“† ط£ظٹط§ظ… ظ…طھظپط±ظ‚ط©
+                    📅 أيام متفرقة
                   </button>
                   <button
                     type="button"
@@ -1038,21 +874,21 @@ export const BookingFormModal = () => {
                       transition: 'all 0.15s'
                     }}
                   >
-                    ًں“… ط£ظٹط§ظ… ظ…طھطھط§ظ„ظٹط©
+                    📆 أيام متتالية
                   </button>
                 </div>
               </div>
 
-              {/* Daily Rate Input */}
+              {/* إدخال سعر اليوم */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-                  ط³ط¹ط± ط§ظ„ظٹظˆظ…:
+                  سعر اليوم:
                 </label>
                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
                   <input
                     type="text"
                     className="form-control en-digits"
-                    placeholder="0 (ط§ط®طھظٹط§ط±ظٹ)"
+                    placeholder="0 (اختياري)"
                     value={dailyRate}
                     onChange={e => setDailyRate(e.target.value.replace(/[^0-9.]/g, ''))}
                     style={{ 
@@ -1084,16 +920,16 @@ export const BookingFormModal = () => {
                     fontWeight: 900,
                     userSelect: 'none'
                   }}>
-                    ط±ظٹط§ظ„ / ظٹظˆظ…
+                    ريال / يوم
                   </span>
                 </div>
               </div>
 
-              {/* Consecutive mode dates */}
+              {/* تواريخ الأيام المتتالية */}
               {freelancerMode === 'consecutive' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>طھط§ط±ظٹط® ط§ظ„ط¨ط¯ط§ظٹط©:</label>
+                    <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>تاريخ البداية:</label>
                     <input
                       type="date"
                       className="form-control"
@@ -1103,7 +939,7 @@ export const BookingFormModal = () => {
                     />
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>طھط§ط±ظٹط® ط§ظ„ظ†ظ‡ط§ظٹط©:</label>
+                    <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>تاريخ النهاية:</label>
                     <input
                       type="date"
                       className="form-control"
@@ -1115,10 +951,10 @@ export const BookingFormModal = () => {
                 </div>
               )}
 
-              {/* Scattered mode dates */}
+              {/* تواريخ الأيام المتفرقة */}
               {freelancerMode === 'scattered' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px', backgroundColor: 'var(--bg-main)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-muted)' }}>طھظˆط§ط±ظٹط® ط£ظٹط§ظ… ط§ظ„ط¹ظ…ظ„ ط§ظ„ظ…طھظپط±ظ‚ط©:</span>
+                  <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-muted)' }}>تواريخ أيام العمل المتفرقة:</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', paddingRight: '2px' }}>
                     {scatteredDates.map((dateVal, idx) => (
                       <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -1153,21 +989,21 @@ export const BookingFormModal = () => {
                     style={{ height: '30px', fontSize: '0.74rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', marginTop: '4px', borderStyle: 'dashed' }}
                   >
                     <Icons.Plus size={14} />
-                    <span>ط¥ط¶ط§ظپط© طھط§ط±ظٹط® ط¹ظ…ظ„ ط¢ط®ط±</span>
+                    <span>إضافة تاريخ عمل آخر</span>
                   </button>
                 </div>
               )}
 
-              {/* Total due summary card */}
+              {/* بطاقة ملخص المستحقات */}
               <div style={{ padding: '12px 14px', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ط¥ط¬ظ…ط§ظ„ظٹ ط¹ط¯ط¯ ط§ظ„ط£ظٹط§ظ…:</span>
-                  <strong style={{ fontSize: '0.86rem', color: 'var(--text-main)' }}>{workingDaysCount} ظٹظˆظ… ط¹ظ…ظ„</strong>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>إجمالي عدد الأيام:</span>
+                  <strong style={{ fontSize: '0.86rem', color: 'var(--text-main)' }}>{workingDaysCount} يوم عمل</strong>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ط¥ط¬ظ…ط§ظ„ظٹ ط§ظ„ظ…ط³طھط­ظ‚ (ط±ظٹط§ظ„ ط³ط¹ظˆط¯ظٹ):</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>إجمالي المستحق (ريال سعودي):</span>
                   <strong style={{ fontSize: '1.05rem', color: 'var(--status-success)' }} className="en-digits">
-                    {calculatedTotalDue.toLocaleString('en-US')} ط±ظٹط§ظ„
+                    {calculatedTotalDue.toLocaleString('en-US')} ريال
                   </strong>
                 </div>
               </div>
@@ -1175,18 +1011,18 @@ export const BookingFormModal = () => {
             </div>
           )}
 
-          {/* B. CLIENT FIELDS */}
+          {/* B. حقول العميل */}
           {bookingType === 'client' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '14px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-                  ط§ظ„ط³ط¹ط± / ظ‚ظٹظ…ط© ط§ظ„ظپط§طھظˆط±ط©:
+                  السعر / قيمة الفاتورة:
                 </label>
                 <div style={{ display: 'flex', alignItems: 'stretch' }}>
                   <input
                     type="text"
                     className="form-control en-digits"
-                    placeholder="0 (ط§ط®طھظٹط§ط±ظٹ)"
+                    placeholder="0 (اختياري)"
                     value={totalPrice}
                     onChange={e => setTotalPrice(e.target.value.replace(/[^0-9.]/g, ''))}
                     style={{ 
@@ -1218,13 +1054,13 @@ export const BookingFormModal = () => {
                     fontWeight: 900,
                     userSelect: 'none'
                   }}>
-                    ط±ظٹط§ظ„ ط³ط¹ظˆط¯ظٹ
+                    ريال سعودي
                   </span>
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-                  ط±ظ‚ظ… ط§ظ„ظپط§طھظˆط±ط©:
+                  رقم الفاتورة:
                 </label>
                 <input
                   type="text"
@@ -1238,19 +1074,19 @@ export const BookingFormModal = () => {
             </div>
           )}
 
-          {/* C. COMPANY FIELDS */}
+          {/* C. حقول الشركة */}
           {bookingType === 'company' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px dashed var(--border-color)', paddingTop: '14px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>
-                    ظ‚ظٹظ…ط© ط§ظ„ط§طھظپط§ظ‚ ط§ظ„ظ…ط§ظ„ظٹ:
+                    قيمة الاتفاق المالي:
                   </label>
                   <div style={{ display: 'flex', alignItems: 'stretch' }}>
                     <input
                       type="text"
                       className="form-control en-digits"
-                      placeholder="0 (ط§ط®طھظٹط§ط±ظٹ)"
+                      placeholder="0 (اختياري)"
                       value={totalPrice}
                       onChange={e => setTotalPrice(e.target.value.replace(/[^0-9.]/g, ''))}
                       style={{ 
@@ -1282,12 +1118,12 @@ export const BookingFormModal = () => {
                       fontWeight: 900,
                       userSelect: 'none'
                     }}>
-                      ط±ظٹط§ظ„ ط³ط¹ظˆط¯ظٹ
+                      ريال سعودي
                     </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ط±ظ‚ظ… ط§ظ„ظپط§طھظˆط±ط©:</label>
+                  <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>رقم الفاتورة:</label>
                   <input
                     type="text"
                     className="form-control en-digits"
@@ -1299,42 +1135,42 @@ export const BookingFormModal = () => {
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ط­ط§ظ„ط© ط§ظ„ظپط§طھظˆط±ط©:</label>
+                <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>حالة الفاتورة:</label>
                 <select
                   className="form-control"
                   value={invoiceStatus}
                   onChange={e => setInvoiceStatus(e.target.value)}
-                  style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 10px' }}
+                  style={{ height: '40px', borderRadius: '10px', fontSize: '0.84rem', padding: '0 10px', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
                 >
-                  <option value="ط؛ظٹط± ظ…ط³ط¯ط¯">â‌Œ ط؛ظٹط± ظ…ط³ط¯ط¯ط©</option>
-                  <option value="ط¬ط²ط¦ظٹ">ًںں، ظ…ط¯ظپظˆط¹ط© ط¬ط²ط¦ظٹط§ظ‹</option>
-                  <option value="ظ…ط³ط¯ط¯">âœ… ظ…ط¯ظپظˆط¹ط© ط¨ط§ظ„ظƒط§ظ…ظ„</option>
+                  <option value="غير مسدد">❌ غير مسددة</option>
+                  <option value="جزئي">🟡 مدفوعة جزئيًا</option>
+                  <option value="مسدد">✅ مدفوعة بالكامل</option>
                 </select>
               </div>
             </div>
           )}
 
-          {/* Notes */}
+          {/* 11. ملاحظات أو تعليمات خاصة */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '12px' }}>
-            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ظ…ظ„ط§ط­ط¸ط§طھ ط£ظˆ طھط¹ظ„ظٹظ…ط§طھ ط®ط§طµط©:</label>
+            <label style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)' }}>ملاحظات أو تعليمات خاصة:</label>
             <textarea
               className="form-control"
-              placeholder="ط£ظٹ طھط¹ظ„ظٹظ…ط§طھ ط£ظˆ طھظپط§طµظٹظ„ ط¥ط¶ط§ظپظٹط© ط­ظˆظ„ ط§ظ„طھط؛ط·ظٹط©..."
+              placeholder="أي تعليمات أو تفاصيل إضافية حول التغطية..."
               value={notes}
               onChange={e => setNotes(e.target.value)}
               rows={2}
-              style={{ borderRadius: '10px', fontSize: '0.84rem', resize: 'vertical' }}
+              style={{ borderRadius: '10px', fontSize: '0.84rem', resize: 'vertical', direction: 'rtl', textAlign: 'right', unicodeBidi: 'plaintext' }}
             />
           </div>
 
         </div>
 
-        {/* Footer Save Button fixed at the bottom */}
+        {/* 12. Footer Save Button fixed at the bottom */}
         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', backgroundColor: 'var(--bg-card)', width: '100%' }}>
           <button
             type="button"
             onClick={handleSave}
-            disabled={!entitySearch.trim() && !clientName.trim() && !photographerName.trim()}
+            disabled={!clientName.trim() && !photographerName.trim()}
             className="btn btn-primary"
             style={{
               width: '100%',
@@ -1346,18 +1182,18 @@ export const BookingFormModal = () => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              cursor: (entitySearch.trim() || clientName.trim() || photographerName.trim()) ? 'pointer' : 'not-allowed',
-              opacity: (entitySearch.trim() || clientName.trim() || photographerName.trim()) ? 1 : 0.6,
+              cursor: (clientName.trim() || photographerName.trim()) ? 'pointer' : 'not-allowed',
+              opacity: (clientName.trim() || photographerName.trim()) ? 1 : 0.6,
               backgroundColor: getThemeColor(),
               borderColor: getThemeColor()
             }}
           >
             <Icons.Save size={18} />
-            <span>{isEditMode ? 'ط­ظپط¸ ط§ظ„طھط¹ط¯ظٹظ„ط§طھ ًں’¾' : 'ط­ظپط¸ ظˆطھط£ظƒظٹط¯ ط§ظ„ط­ط¬ط² ًں’¾'}</span>
+            <span>{isEditMode ? 'حفظ التعديلات 💾' : 'حفظ وتأكيد الحجز 💾'}</span>
           </button>
         </div>
 
-              {/* Device Contact Picker Modal System (Screens 2, 3, 5, 6, 7, 8) */}
+        {/* Device Contact Picker Modal System (Screens 2, 3, 5, 6, 7, 8) */}
         <DeviceContactPicker
           isOpen={contactPickerState.isOpen}
           targetRole={contactPickerState.roleType}
